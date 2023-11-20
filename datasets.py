@@ -3,7 +3,7 @@ import torch
 from torch.utils.data import Dataset
 from PIL import Image
 import xml.etree.ElementTree as ET
-from utils import transform
+#from utils import transform
 import cv2
 import numpy as np
 
@@ -32,40 +32,37 @@ class PascalVOCDataset(Dataset):
     def __getitem__(self, i):
         image_filename = self.image_filenames[i]
         annotation_filename = self.annotation_filenames[i]
-        #image = Image.open(image_filename, mode='r').convert('RGB')
         image = cv2.imread(image_filename)
-        #image  = cv2.resize(image, (300,300))
-
+        
         tree = ET.parse(annotation_filename)
         root = tree.getroot()
         boxes = []
         labels = []
+        confidences = []
         difficulties = []
 
         label_mapping = {'airconditioner': 1, 'backpack': 2, 'bathtub': 3, 'bed': 4, 'board': 5, 'book': 6, 'bottle': 7, 'bowl': 8, 'cabinet': 9, 'chair': 10, 'clock': 11, 'computer': 12, 'cup': 13, 'door': 14, 'fan': 15, 'fireplace': 16, 'heater': 17, 'keyboard': 18, 'light': 19, 'microwave': 20, 'mirror': 21, 'mouse': 22, 'oven': 23, 'person': 24, 'phone': 25, 'picture': 26, 'potted plant': 27, 'refrigerator': 28, 'sink': 29, 'sofa': 30, 'table': 31, 'toilet': 32, 'tv': 33, 'vase': 34, 'washer': 35, 'window': 36, 'wine glass': 37}
 
         for obj in root.findall('object'):
             bbox = obj.find('bndbox')
-            x_center = int(bbox.find('x_center').text)
-            y_center = int(bbox.find('y_center').text)
+            x_center = int(bbox.find('x_center').text)/1920
+            y_center = int(bbox.find('y_center').text)/960
             #phi = float(bbox.find('phi').text)
             #theta = float(bbox.find('theta').text)
-            width = int(float(bbox.find('width').text))#*(300/1920))
-            height = int(float(bbox.find('height').text))#*(300/960))
+            width = (float(bbox.find('width').text))/20#/40
+            height = (float(bbox.find('height').text))/20#/40
             boxes.append([x_center, y_center, width, height])
             labels.append(label_mapping[obj.find('name').text])
+            confidences.append(1)
 
-        image = image.astype(np.float32) / 255.0  # Convert to float and normalize to [0, 1]
-        image = torch.from_numpy(image).permute(2, 0, 1)  # Convert to torch tensor and permute to (C, H, W)
+        image = image.astype(np.float32) / 255.0
+        image = torch.from_numpy(image).permute(2, 0, 1)
 
         boxes = torch.FloatTensor(boxes)
         labels = torch.LongTensor(labels)
-        ####image = torch.tensor(image)
+        confidences = torch.FloatTensor(confidences).unsqueeze(1)  # Convert to tensor 
 
-        #image, boxes, labels, difficulties = transform(image, boxes, labels, difficulties, split=self.split, new_h = 300, new_w = 300)
-        #image = 
-
-        return image, boxes, labels
+        return image, boxes, labels, confidences
 
     def __len__(self):
         return len(self.image_filenames)
@@ -85,7 +82,8 @@ class PascalVOCDataset(Dataset):
         images = [item[0] for item in batch]
         boxes = [item[1] for item in batch]
         labels = [item[2] for item in batch]
+        confidences = [item[3] for item in batch]
 
         images = torch.stack(images, dim=0)
 
-        return images, boxes, labels  # tensor (N, 3, 300, 300), 3 lists of N tensors each
+        return images, boxes, labels, confidences  # tensor (N, 3, 300, 300), 3 lists of N tensors each

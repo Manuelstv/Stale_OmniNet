@@ -2,11 +2,12 @@ import torch
 import torch.optim as optim
 import torch.nn as nn
 from torch.utils.data import DataLoader
-from torchvision import transforms
+#sfrom torchvision import transforms
 
 # Import your model and dataset classes
 from model import SimpleObjectDetector
 from datasets import PascalVOCDataset
+torch.cuda.empty_cache()
 
 def bbox_iou(box1, box2):
     """
@@ -41,68 +42,77 @@ def iou_loss(preds, targets):
     loss = 1 - iou  # IoU loss is 1 - IoU
     return loss.mean()
 
+torch.cuda.empty_cache()
 # Set device
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # Hyperparameters
-num_epochs = 100
-learning_rate = 0.0001
-batch_size = 2
+num_epochs = 60
+learning_rate = 0.00001
+batch_size = 8
 num_classes = 37  # Example: 20 classes
 
 # Initialize dataset and dataloader
-train_dataset = PascalVOCDataset(split='TRAIN', keep_difficult=False, max_images=100)
+train_dataset = PascalVOCDataset(split='TRAIN', keep_difficult=False, max_images=800)
 train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, collate_fn=train_dataset.collate_fn)
 
-
-#print()
-# Initialize the model
-
-model = SimpleObjectDetector(num_boxes=150, num_classes=num_classes).to(device)
+model = SimpleObjectDetector(num_boxes=80, num_classes=num_classes).to(device)
 
 # Loss and optimizer
 classification_criterion = nn.CrossEntropyLoss()  # For class predictions
+confidence_criterion = nn.BCELoss()
 optimizer = optim.Adam(model.parameters(), lr=learning_rate)
 
-x = 10  # Define the interval for printing the loss
+x = 50  # Define the interval for printing the loss
 
 for epoch in range(num_epochs):
     torch.cuda.empty_cache()
     model.train()
-    for i, (images, boxes_list, labels_list) in enumerate(train_loader):
+    for i, (images, boxes_list, labels_list, confidences_list) in enumerate(train_loader):
         images = images.to(device)
 
         optimizer.zero_grad()
 
         # Forward pass with the whole batch
-        detection_preds, classification_preds = model(images)
+        detection_preds, classification_preds, confidence_preds = model(images)
 
         # Initialize total losses
         total_regression_loss = 0
+        total_confidence_loss = 0
         total_classification_loss = 0
 
-        for boxes, labels, det_preds, cls_preds in zip(boxes_list, labels_list, detection_preds, classification_preds):
+        for boxes, labels, det_preds, cls_preds, conf_preds in zip(boxes_list, labels_list, detection_preds, classification_preds, confidence_preds):
             boxes = boxes.to(device)
             labels = labels.to(device)
             labels = labels - 1
+
+            target_confidences = torch.zeros_like(conf_preds)
+            target_confidences[:len(boxes)] = 1
 
             # Match the number of predictions to the number of ground truth boxes
             num_ground_truth = boxes.shape[0]
             det_preds = det_preds[:num_ground_truth, :]
             cls_preds = cls_preds[:num_ground_truth, :].view(-1, num_classes)
+            #conf_preds = conf_preds[:num_ground_truth, :]
 
             # Compute loss for this image
+            confidence_loss = confidence_criterion(conf_preds, target_confidences)
+
+            # Combine losses
             regression_loss = iou_loss(det_preds, boxes)
             classification_loss = classification_criterion(cls_preds, labels)
 
             # Accumulate losses
             total_regression_loss += regression_loss
+            total_confidence_loss += confidence_loss
             total_classification_loss += classification_loss
 
         # Compute the average losses
         avg_regression_loss = total_regression_loss / len(boxes_list)
         avg_classification_loss = total_classification_loss / len(boxes_list)
-        total_loss = avg_regression_loss + avg_classification_loss
+        avg_confidence_loss = total_confidence_loss / len(boxes_list)
+        
+        total_loss = avg_regression_loss + avg_classification_loss + avg_confidence_loss
 
         # Backward pass and optimization
         total_loss.backward()

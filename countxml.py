@@ -18,7 +18,7 @@ def find_files_with_many_objects(directory, object_threshold=100):
                 files_with_many_objects.append(file)
     return files_with_many_objects
 
-def move_files_with_many_objects(source_dir, target_dir, threshold=80):
+def move_files_with_many_objects(source_dir, target_dir, threshold=50):
     """ Move XML and corresponding JPEG files with more than 'threshold' objects. """
     for filename in os.listdir(source_dir):
         if filename.endswith('.xml'):
@@ -31,7 +31,7 @@ def move_files_with_many_objects(source_dir, target_dir, threshold=80):
 
                 # Move corresponding JPEG file
                 jpg_filename = filename.replace('.xml', '.jpg')
-                jpg_file_path = os.path.join('home/mstveras/ssd-360/dataset/train/images', jpg_filename)
+                jpg_file_path = os.path.join('/home/mstveras/ssd-360/dataset/train/images', jpg_filename)
                 if os.path.exists(jpg_file_path):
                     shutil.move(jpg_file_path, os.path.join(target_dir, jpg_filename))
 

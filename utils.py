@@ -630,6 +630,7 @@ def transform(image, boxes, labels, difficulties, split, new_h, new_w):
         # Flip image with a 50% chance
         #if random.random() < 0.5:
         #    new_image, new_boxes = flip(new_image, new_boxes)
+        
 
     new_boxes[:,0] = boxes[:,0] * (new_w / w)
     new_boxes[:,1] = boxes[:,1] * (new_h / h)

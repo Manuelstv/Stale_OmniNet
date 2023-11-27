@@ -23,4 +23,4 @@ def process_folder(folder_path):
             print(f"Processed {xml_file}")
 
 # Replace 'your_folder_path' with the path to your folder containing XML files
-process_folder('labels')
+process_folder('labels_person')

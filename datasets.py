@@ -16,19 +16,19 @@ class PascalVOCDataset(Dataset):
         self.keep_difficult = keep_difficult
         #self.split_dir = os.path.join(data_folder, self.split.lower())
         self.image_dir = '/home/mstveras/ssd-360/dataset/train/images'
-        self.annotation_dir = '/home/mstveras/ssd-360/dataset/train/labels'
+        self.annotation_dir = '/home/mstveras/ssd-360/dataset/train/labels_all'
         
         # Load all image files, sorting them to ensure that they are aligned
         self.image_filenames = [os.path.join(self.image_dir, f) for f in sorted(os.listdir(self.image_dir)) if f.endswith('.jpg')][:max_images]
         self.annotation_filenames = [os.path.join(self.annotation_dir, f) for f in sorted(os.listdir(self.annotation_dir)) if f.endswith('.xml')][:max_images]
         
-        #assert len(self.image_filenames) == len(self.annotation_filenames)
+        assert len(self.image_filenames) == len(self.annotation_filenames)
 
-        #for img_filename, ann_filename in zip(self.image_filenames, self.annotation_filenames):
-        #    img_basename = os.path.splitext(img_filename)[0][-7:-3]
-        #    ann_basename = os.path.splitext(ann_filename)[0][-7:-3]
+        for img_filename, ann_filename in zip(self.image_filenames, self.annotation_filenames):
+            img_basename = os.path.splitext(img_filename)[0][-7:-3]
+            ann_basename = os.path.splitext(ann_filename)[0][-7:-3]
             #print(img_basename, ann_basename)
-        #    assert img_basename == ann_basename, f"File name mismatch: {img_filename} and {ann_filename}"
+            assert img_basename == ann_basename, f"File name mismatch: {img_filename} and {ann_filename}"
 
         # If max_images is set, limit the dataset size
         if max_images is not None:
@@ -47,19 +47,56 @@ class PascalVOCDataset(Dataset):
         confidences = []
         difficulties = []
 
-        label_mapping = {'nada':0, 'airconditioner': 1, 'backpack': 2, 'bathtub': 3, 'bed': 4, 'board': 5, 'book': 6, 'bottle': 7, 'bowl': 8, 'cabinet': 9, 'chair': 10, 'clock': 11, 'computer': 12, 'cup': 13, 'door': 14, 'fan': 15, 'fireplace': 16, 'heater': 17, 'keyboard': 18, 'light': 19, 'microwave': 20, 'mirror': 21, 'mouse': 22, 'oven': 23, 'person': 24, 'phone': 25, 'picture': 26, 'potted plant': 27, 'refrigerator': 28, 'sink': 29, 'sofa': 30, 'table': 31, 'toilet': 32, 'tv': 33, 'vase': 34, 'washer': 35, 'window': 36, 'wine glass': 37}
+        label_mapping = {
+        'airconditioner': 0,
+        'backpack': 1,
+        'bathtub': 2,
+        'bed': 3,
+        'board': 4,
+        'book': 5,
+        'bottle': 6,
+        'bowl': 7,
+        'cabinet': 8,
+        'chair': 9,
+        'clock': 10,
+        'computer': 11,
+        'cup': 12,
+        'door': 13,
+        'fan': 14,
+        'fireplace': 15,
+        'heater': 16,
+        'keyboard': 17,
+        'light': 18,
+        'microwave': 19,
+        'mirror': 20,
+        'mouse': 21,
+        'oven': 22,
+        'person': 23,
+        'phone': 24,
+        'picture': 25,
+        'potted plant': 26,
+        'refrigerator': 27,
+        'sink': 28,
+        'sofa': 29,
+        'table': 30,
+        'toilet': 31,
+        'tv': 32,
+        'vase': 33,
+        'washer': 34,
+        'window': 35,
+        'wine glass': 36}
 
         for obj in root.findall('object'):
-            bbox = obj.find('bndbox')
-            x_center = int(bbox.find('x_center').text)/1920
-            y_center = int(bbox.find('y_center').text)/960
-            #phi = float(bbox.find('phi').text)
-            #theta = float(bbox.find('theta').text)
-            width = (float(bbox.find('width').text))/20#/40
-            height = (float(bbox.find('height').text))/20#/40
-            boxes.append([x_center, y_center, width, height])
-            labels.append(label_mapping[obj.find('name').text])
-            confidences.append(1)
+            #if obj.find('name').text == 'light':  # Check if the object is a person
+            if True:
+                bbox = obj.find('bndbox')
+                x_center = int(bbox.find('x_center').text) / 1920
+                y_center = int(bbox.find('y_center').text) / 960
+                width = (float(bbox.find('width').text)) / 30
+                height = (float(bbox.find('height').text)) / 30
+                boxes.append([x_center, y_center, width, height])
+                labels.append(label_mapping[obj.find('name').text])
+                confidences.append(1)
 
         ##image = image.astype(np.float32) / 255.0
         #image = torch.from_numpy(image).permute(2, 0, 1)

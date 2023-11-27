@@ -104,7 +104,7 @@ class PascalVOCDataset(Dataset):
         boxes = torch.FloatTensor(boxes)
         labels = torch.LongTensor(labels)
         confidences = torch.FloatTensor(confidences).unsqueeze(1)  # Convert to tensor
-        image, boxes, labels, difficulties = transform(image, boxes, labels, difficulties, split=self.split, new_h = 300, new_w = 600) 
+        image, boxes, labels, difficulties = transform(image, boxes, labels, difficulties, split=self.split, new_w = 600, new_h = 300) 
 
 
         return image, boxes, labels, confidences

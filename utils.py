@@ -581,7 +581,7 @@ def photometric_distort(image):
     return new_image
 
 
-def transform(image, boxes, labels, difficulties, split, new_h, new_w):
+def transform(image, boxes, labels, difficulties, split, new_w, new_h):
     """
     Apply the transformations above.
 
@@ -606,7 +606,7 @@ def transform(image, boxes, labels, difficulties, split, new_h, new_w):
     new_difficulties = difficulties
     # Skip the following operations for evaluation/testing
 
-    new_image  = cv2.resize(image, (new_h, new_w))
+    new_image  = cv2.resize(image, (new_w, new_h))
 
     #if split == 'TRAIN':
         # A series of photometric distortions in random order, each with 50% chance of occurrence, as in Caffe repo

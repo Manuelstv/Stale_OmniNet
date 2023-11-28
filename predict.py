@@ -31,13 +31,13 @@ image = process_image(image_path)
 with torch.no_grad():
     detection_preds, classification_preds, confidence_preds = model(image)
 
-def draw_boxes(image, boxes, labels, confidences, label_names, threshold=0.03):
+def draw_boxes(image, boxes, labels, confidences, label_names, threshold=0.4):
     for box, label, confidence in zip(boxes, labels, confidences):
         if confidence < threshold:
             continue
         label_name = label_names[label]
 
-        x_center, y_center, width, height = 1920*box[0], 960*box[1], 20*box[2], 20*box[3]
+        x_center, y_center, width, height = 600*box[0], 300*box[1], 90*box[2], 90*box[3]
         xmin = int((x_center - width / 2))
         ymin = int(y_center - height / 2) 
         xmax = int(x_center + width / 2) 

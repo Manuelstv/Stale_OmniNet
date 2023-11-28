@@ -16,6 +16,10 @@ import numpy as np
 import json
 from numpy.linalg import norm
 from skimage.io import imread
+from calculate_RoIoU import Sph
+
+
+
 
 class Rotation:
     @staticmethod
@@ -31,7 +35,7 @@ class Rotation:
 class Plotting:
     @staticmethod
     def plotEquirectangular(image, kernel, color):
-        resized_image = cv2.resize(image, (300,300))
+        resized_image = np.ascontiguousarray(image, dtype=np.uint8)
         kernel = kernel.astype(np.int32)
         hull = cv2.convexHull(kernel)
         cv2.polylines(resized_image, [hull], isClosed=True, color=color, thickness=2)
@@ -54,6 +58,8 @@ def plot_bfov(image, v00, u00, a_lat, a_long, color, h, w):
     u = (phi / (2 * np.pi) + 1. / 2.) * w
     v = h - (-theta / np.pi + 1. / 2.) * h
     return Plotting.plotEquirectangular(image, np.vstack((u, v)).T, color)
+
+
 def bbox_iou(pred_boxes, gt_boxes):
     """
     Calculate the IoU of two sets of boxes in (x_center, y_center, width, height) format.
@@ -114,6 +120,34 @@ def match_predictions_to_ground_truths(pred_boxes, gt_boxes, iou_threshold=0.5):
 
     return matched_gt_indices
 
+
+
+def transFormat(gt):
+    '''
+    Change the format and range of the RBFoV Representations.
+    Input:
+    - gt: the last dimension: [center_x, center_y, fov_x, fov_y, angle]
+          center_x : [0,1]
+          center_y : [0,1]
+          fov_x    : [0, 180]
+          fov_y    : [0, 180]
+          All parameters are angles.
+    Output:
+    - ann: the last dimension: [center_x', center_y', fov_x', fov_y', angle]
+           center_x' : [0, 2 * pi]
+           center_y' : [0, pi]
+           fov_x'    : [0, pi]
+           fov_y'    : [0, pi]
+           All parameters are radians.
+    '''
+    import copy
+    ann = copy.copy(gt)
+    ann[..., 2] = ann[..., 2] * np.pi
+    ann[..., 3] = ann[..., 3] * np.pi
+    ann[..., 0] = ann[..., 0] *2*np.pi
+    ann[..., 1] = ann[...,1]*np.pi
+    return ann
+
 def iou_loss(pred_boxes, gt_boxes, matched_indices):
     """
     Compute the IoU loss for matched pairs of predicted and ground truth boxes.
@@ -136,7 +170,7 @@ torch.cuda.empty_cache()
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # Hyperparameters
-num_epochs = 10
+num_epochs = 5
 learning_rate = 0.0001
 batch_size = 8
 num_classes = 37
@@ -194,29 +228,31 @@ for epoch in range(num_epochs):
         total_confidence_loss = 0
         total_classification_loss = 0
 
+        n=0
+
         for boxes, labels, det_preds, cls_preds, conf_preds in zip(boxes_list, labels_list, detection_preds, classification_preds, confidence_preds):
             boxes = boxes.to(device)
             labels = labels.to(device)
 
+            #print(det_preds)
             iou_matrix = bbox_iou(det_preds, boxes)
 
             color_map = {4: (0, 0, 255), 5: (0, 255, 0), 6: (255, 0, 0), 12: (255, 255, 0), 17: (0, 255, 255), 25: (255, 0, 255), 26: (128, 128, 0), 27: (0, 128, 128), 30: (128, 0, 128), 34: (128, 128, 128), 35: (64, 0, 0), 36: (0, 64, 0)}
             h, w = images.shape[:2]
             classes = labels
 
-            img = images[0].permute(1, 2, 0).cpu().numpy()
+            img = images[n].permute(1, 2, 0).cpu().numpy()*255
 
-            cv2.imwrite('/home/mstveras/final_imag.png', img*255)
+            n+=1
 
             for i in range(len(boxes)):
                 box = boxes[i].cpu()
                 u00, v00, a_lat1, a_long1 = box[0], box[1], box[2], box[3]
                 a_lat = np.radians(a_long1)
                 a_long = np.radians(a_lat1)
-                color = color_map.get(classes[i], (255, 255, 255))
-                image = plot_bfov(img, v00, u00, a_lat, a_long,(0,255,0), 300,600)
-            cv2.imwrite('/home/mstveras/final_image.png', image)
-
+                #color = color_map.get(classes[i], (255, 255, 255))
+                img = plot_bfov(img, v00, u00, a_lat, a_long,(0,255,0), 300,600)
+            #cv2.imwrite('/home/mstveras/final_image.png', img)
 
             # Determine best match for each prediction
             matched_indices = torch.argmax(iou_matrix, dim=1)

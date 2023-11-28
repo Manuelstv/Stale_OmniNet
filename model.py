@@ -27,11 +27,9 @@ class SimpleObjectDetectorWithBackbone(nn.Module):
     def forward(self, x):
         x = self.backbone(x)
         x = x.view(x.size(0), -1)
-        print(x.size())
-        print(x.size())
         x = F.relu(self.fc1(x))
         #x = F.relu(self.fc2(x))
-        detection = self.det_head(x).view(-1, self.num_boxes, 4)
+        detection = torch.sigmoid(self.det_head(x)).view(-1, self.num_boxes, 4)
         classification = self.cls_head(x).view(-1, self.num_boxes, self.num_classes)
         confidence = torch.sigmoid(self.conf_head(x)).view(-1, self.num_boxes, 1)
         return detection, classification, confidence

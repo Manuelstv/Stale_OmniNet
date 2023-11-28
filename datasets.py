@@ -90,10 +90,10 @@ class PascalVOCDataset(Dataset):
             #if obj.find('name').text == 'light':  # Check if the object is a person
             if True:
                 bbox = obj.find('bndbox')
-                x_center = int(bbox.find('x_center').text) / 1920
-                y_center = int(bbox.find('y_center').text) / 960
-                width = (float(bbox.find('width').text)) / 30
-                height = (float(bbox.find('height').text)) / 30
+                x_center = int(bbox.find('x_center').text) / 600
+                y_center = int(bbox.find('y_center').text) / 300
+                width = (float(bbox.find('width').text)) / 180
+                height = (float(bbox.find('height').text)) / 180
                 boxes.append([x_center, y_center, width, height])
                 labels.append(label_mapping[obj.find('name').text])
                 confidences.append(1)

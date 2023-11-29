@@ -18,7 +18,7 @@ class Rotation:
 class Plotting:
     @staticmethod
     def plotEquirectangular(image, kernel, color):
-        resized_image = cv2.resize(image, (300,300))
+        resized_image = cv2.resize(image, (600,300))
         kernel = kernel.astype(np.int32)
         hull = cv2.convexHull(kernel)
         cv2.polylines(resized_image, [hull], isClosed=True, color=color, thickness=2)
@@ -40,12 +40,30 @@ def plot_bfov(image, v00, u00, a_lat, a_long, color, h, w):
     theta = np.asarray([np.arcsin(p[ij][1]) for ij in range(r * r)])
     u = (phi / (2 * np.pi) + 1. / 2.) * w
     v = h - (-theta / np.pi + 1. / 2.) * h
-    return Plotting.plotEquirectangular(image, np.vstack((u, v)).T, color)
+    wrap_indices = np.where(u < 0)[0]
+    non_wrap_indices = np.where(u >= 0)[0]
+
+    # For u values crossing left boundary, wrap to the right
+    if len(wrap_indices) > 0:
+        u[wrap_indices] += w
+
+    # First part: Within current boundary
+    bfov_part1 = np.vstack((u[non_wrap_indices], v[non_wrap_indices])).T
+
+    # Second part: Wrapped around
+    bfov_part2 = np.vstack((u[wrap_indices], v[wrap_indices])).T
+
+    # Render both parts
+    image = Plotting.plotEquirectangular(image, bfov_part1, color)
+    if len(wrap_indices) > 0:
+        image = Plotting.plotEquirectangular(image, bfov_part2, color)
+
+    return image
 
 if __name__ == "__main__":
-    image = imread('/home/mstveras/ssd-360/dataset/train/images/7fBj4.jpg')
+    image = imread('/home/mstveras/ssd-360/dataset/train/images/7fShr.jpg')
     h, w = image.shape[:2]
-    with open('/home/mstveras/ssd-360/annotations/7fBj4.json', 'r') as f:
+    with open('/home/mstveras/ssd-360/annotations/7fShr.json', 'r') as f:
         data = json.load(f)
     boxes = data['boxes']
     print(boxes)
@@ -57,5 +75,5 @@ if __name__ == "__main__":
         a_lat = np.radians(a_lat1)
         a_long = np.radians(a_long1)
         color = color_map.get(classes[i], (255, 255, 255))
-        image = plot_bfov(image, v00, u00, a_long, a_lat,(0,255,0), 300,300)
+        image = plot_bfov(image, v00, u00, a_long, a_lat,(0,255,0), 600,300)
     cv2.imwrite('/home/mstveras/final_image.png', image)

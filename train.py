@@ -12,13 +12,10 @@ from datasets import PascalVOCDataset
 torch.cuda.empty_cache()
 
 import cv2
-import numpy as np
 import json
 from numpy.linalg import norm
 from skimage.io import imread
 from calculate_RoIoU import Sph
-
-
 
 
 class Rotation:
@@ -57,70 +54,32 @@ def plot_bfov(image, v00, u00, a_lat, a_long, color, h, w):
     theta = np.asarray([np.arcsin(p[ij][1]) for ij in range(r * r)])
     u = (phi / (2 * np.pi) + 1. / 2.) * w
     v = h - (-theta / np.pi + 1. / 2.) * h
+    
     return Plotting.plotEquirectangular(image, np.vstack((u, v)).T, color)
 
-
-def bbox_iou(pred_boxes, gt_boxes):
+def process_and_save_image(images, boxes, image_index, color, save_path):
     """
-    Calculate the IoU of two sets of boxes in (x_center, y_center, width, height) format.
-    pred_boxes is a tensor of dimensions (N, 4)
-    gt_boxes is a tensor of dimensions (M, 4)
-    Returns a tensor of shape (N, M) where element (i, j) is the IoU of pred_boxes[i] and gt_boxes[j].
+    Process an image from a list, plot bounding boxes, and save the image.
+    
+    Args:
+    - images: A list of images.
+    - boxes: A list of bounding boxes.
+    - image_index: The index of the image in the images list to process.
+    - file_path: The path to save the processed image.
     """
+    # Process the image
 
-    num_pred_boxes = pred_boxes.size(0)
-    num_gt_boxes = gt_boxes.size(0)
-    iou_matrix = torch.zeros((num_pred_boxes, num_gt_boxes), device=pred_boxes.device)
+    # Plot each bounding box
+    for box in boxes:
+        box = box
+        u00, v00, a_lat1, a_long1 = 600*box[0], 300*box[1], 180*box[2], 180*box[3]
+        a_lat = np.radians(a_long1)
+        a_long = np.radians(a_lat1)
+        images = plot_bfov(images, v00, u00, a_lat, a_long, color, 300, 600)
 
-    for i in range(num_pred_boxes):
-        for j in range(num_gt_boxes):
-            # Convert from center format to corner format
-            pred_box = pred_boxes[i]
-            gt_box = gt_boxes[j]
-
-            pred_box_x1 = pred_box[0] - pred_box[2] / 2
-            pred_box_y1 = pred_box[1] - pred_box[3] / 2
-            pred_box_x2 = pred_box[0] + pred_box[2] / 2
-            pred_box_y2 = pred_box[1] + pred_box[3] / 2
-
-            gt_box_x1 = gt_box[0] - gt_box[2] / 2
-            gt_box_y1 = gt_box[1] - gt_box[3] / 2
-            gt_box_x2 = gt_box[0] + gt_box[2] / 2
-            gt_box_y2 = gt_box[1] + gt_box[3] / 2
-
-            # Calculate intersection
-            inter_x1 = torch.max(pred_box_x1, gt_box_x1)
-            inter_y1 = torch.max(pred_box_y1, gt_box_y1)
-            inter_x2 = torch.min(pred_box_x2, gt_box_x2)
-            inter_y2 = torch.min(pred_box_y2, gt_box_y2)
-
-            inter_area = max(inter_x2 - inter_x1 + 1, 0) * max(inter_y2 - inter_y1 + 1, 0)
-
-            # Calculate union
-            pred_box_area = (pred_box_x2 - pred_box_x1 + 1) * (pred_box_y2 - pred_box_y1 + 1)
-            gt_box_area = (gt_box_x2 - gt_box_x1 + 1) * (gt_box_y2 - gt_box_y1 + 1)
-
-            union_area = pred_box_area + gt_box_area - inter_area
-
-            # Calculate IoU
-            iou = inter_area / union_area
-            iou_matrix[i, j] = iou
-
-    return iou_matrix
-
-def match_predictions_to_ground_truths(pred_boxes, gt_boxes, iou_threshold=0.5):
-    iou_matrix = bbox_iou(pred_boxes, gt_boxes)  # Assuming bbox_iou can handle batched inputs
-
-    matched_gt_indices = torch.argmax(iou_matrix, dim=1)
-    max_ious = iou_matrix[range(len(pred_boxes)), matched_gt_indices]
-
-    # Applying the IoU threshold
-    matches = max_ious > iou_threshold
-    matched_gt_indices[~matches] = -1  # Assign -1 for unmatched (or low IoU) predictions
-
-    return matched_gt_indices
-
-
+    # Save the processed image
+    cv2.imwrite(save_path, images)
+    return images
 
 def transFormat(gt):
     '''
@@ -146,24 +105,8 @@ def transFormat(gt):
     ann[..., 3] = ann[..., 3] * np.pi
     ann[..., 0] = ann[..., 0] *2*np.pi
     ann[..., 1] = ann[...,1]*np.pi
+
     return ann
-
-def iou_loss(pred_boxes, gt_boxes, matched_indices):
-    """
-    Compute the IoU loss for matched pairs of predicted and ground truth boxes.
-    pred_boxes: Predicted boxes (N, 4)
-    gt_boxes: Ground truth boxes (M, 4)
-    matched_indices: Indices of matched ground truth boxes for each prediction
-    """
-    # Filter out the unmatched indices (-1 indicates unmatched)
-    valid_indices = (matched_indices != -1)
-    matched_pred_boxes = pred_boxes[valid_indices]
-    matched_gt_boxes = gt_boxes[matched_indices[valid_indices]]
-
-    iou = bbox_iou(matched_pred_boxes, matched_gt_boxes)
-    iou_values = torch.diag(iou)  # Extract the IoUs for matched pairs
-    loss = 1 - iou_values  # IoU loss is 1 - IoU
-    return loss.mean()  # Return the mean IoU loss
 
 torch.cuda.empty_cache()
 # Set device
@@ -228,62 +171,74 @@ for epoch in range(num_epochs):
         total_confidence_loss = 0
         total_classification_loss = 0
 
-        n=0
-
         for boxes, labels, det_preds, cls_preds, conf_preds in zip(boxes_list, labels_list, detection_preds, classification_preds, confidence_preds):
             boxes = boxes.to(device)
             labels = labels.to(device)
 
-            #print(det_preds)
-            iou_matrix = bbox_iou(det_preds, boxes)
-
             color_map = {4: (0, 0, 255), 5: (0, 255, 0), 6: (255, 0, 0), 12: (255, 255, 0), 17: (0, 255, 255), 25: (255, 0, 255), 26: (128, 128, 0), 27: (0, 128, 128), 30: (128, 0, 128), 34: (128, 128, 128), 35: (64, 0, 0), 36: (0, 64, 0)}
-            h, w = images.shape[:2]
-            classes = labels
 
-            img = images[n].permute(1, 2, 0).cpu().numpy()*255
+            gt = np.array([
+            [  0.1224,   0.5542,  20.0000/180,  92.0000/180],
+            [  0.4323,   0.5448,  12.0000/180,  68.0000/180],
+            [  0.7286,   0.4792,  68.0000/180,  64.0000/180],
+            [  0.4802,   0.4708,   4.0000/180,  28.0000/180],
+            [  0.2948,   0.5573,  92.0000/180, 108.0000/180]])
 
-            n+=1
+            img1 = images[0].permute(1,2,0).cpu().numpy()*255
 
-            for i in range(len(boxes)):
-                box = boxes[i].cpu()
-                u00, v00, a_lat1, a_long1 = box[0], box[1], box[2], box[3]
-                a_lat = np.radians(a_long1)
-                a_long = np.radians(a_lat1)
-                #color = color_map.get(classes[i], (255, 255, 255))
-                img = plot_bfov(img, v00, u00, a_lat, a_long,(0,255,0), 300,600)
-            #cv2.imwrite('/home/mstveras/final_image.png', img)
+            #@images = images.cpu().numpy() * 255
+            img = process_and_save_image(img1, gt, 0, (0,255,0), f'/home/mstveras/img.png')
+
+            boxes = boxes.cpu()
+
+            img = process_and_save_image(img, boxes, 0, (255,0,0), f'/home/mstveras/img2.png')
+
+            zeros_column = np.zeros((gt.shape[0], 1))
+
+            # Stack the zeros column with the original array
+            gt = np.hstack((gt, zeros_column))
+            zeros_column = np.zeros((boxes.shape[0], 1))
+
+            # Stack the zeros column with the original array
+            boxes = np.hstack((boxes, zeros_column))
+
+            _gt = transFormat(gt)
+            _pred = transFormat(boxes)
+
+            sphIoU = Sph().sphIoU(_pred, _gt)
+
+            print(sphIoU)
 
             # Determine best match for each prediction
-            matched_indices = torch.argmax(iou_matrix, dim=1)
-            max_ious = iou_matrix[range(len(det_preds)), matched_indices]
+            #matched_indices = torch.argmax(iou_matrix, dim=1)
+            #max_ious = iou_matrix[range(len(det_preds)), matched_indices]
             
             # Apply IoU threshold to determine positive matches
-            matched_gt_indices = matched_indices[max_ious > 0.1]
-            unmatched_indices = matched_indices[max_ious <= 0.1]
+            #matched_gt_indices = matched_indices[max_ious > 0.1]
+            #unmatched_indices = matched_indices[max_ious <= 0.1]
 
             # Set confidence targets based on matching
-            target_confidences = torch.zeros_like(conf_preds[:, 0])
-            matched_gt_indices = matched_indices[matched_indices != -1]
-            unmatched_gt_indices = matched_indices[matched_indices == -1]
+            #target_confidences = torch.zeros_like(conf_preds[:, 0])
+            #matched_gt_indices = matched_indices[matched_indices != -1]
+            #unmatched_gt_indices = matched_indices[matched_indices == -1]
 
-            target_confidences[matched_gt_indices] = 1
+            #target_confidences[matched_gt_indices] = 1
 
             # Classification labels - background class for unmatched, actual labels for matched
-            cls_labels = torch.full((len(cls_preds),), background_class_label, device=device, dtype=torch.long)
+            #cls_labels = torch.full((len(cls_preds),), background_class_label, device=device, dtype=torch.long)
 
-            cls_labels[matched_gt_indices] = labels[matched_indices[matched_indices != -1]]
+            #cls_labels[matched_gt_indices] = labels[matched_indices[matched_indices != -1]]
 
             # Compute losses
-            regression_loss = iou_loss(det_preds, boxes, matched_indices)
+            #regression_loss = iou_loss(det_preds, boxes, matched_indices)
 
-            classification_loss = classification_criterion(cls_preds, cls_labels)
-            confidence_loss = confidence_criterion(conf_preds[:, 0], target_confidences)
+            #classification_loss = classification_criterion(cls_preds, cls_labels)
+            #onfidence_loss = confidence_criterion(conf_preds[:, 0], target_confidences)
 
             # Accumulate losses
-            total_regression_loss += regression_loss
-            total_confidence_loss += confidence_loss
-            total_classification_loss += classification_loss
+            #total_regression_loss += regression_loss
+            #total_confidence_loss += confidence_loss
+            #total_classification_loss += classification_loss
 
         # Compute the average losses
         avg_regression_loss = total_regression_loss / len(boxes_list)

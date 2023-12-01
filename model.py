@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torchvision.models as models
+import numpy as np
 
 class SimpleObjectDetectorWithBackbone(nn.Module):
     def __init__(self, num_boxes=50, num_classes=38, pretrained=True):
@@ -20,7 +21,7 @@ class SimpleObjectDetectorWithBackbone(nn.Module):
         # Fully connected layers
         self.fc1 = nn.Linear(fc_1_features, 256)
         #self.fc2 = nn.Linear(fc_2_features, 256)
-        self.det_head = nn.Linear(256, num_boxes * 4)  # Detection head
+        self.det_head = nn.Linear(256, num_boxes * 5)  # Detection head
         self.cls_head = nn.Linear(256, num_boxes * num_classes)  # Classification head
         self.conf_head = nn.Linear(256, num_boxes)  # Confidence head
 
@@ -29,7 +30,7 @@ class SimpleObjectDetectorWithBackbone(nn.Module):
         x = x.view(x.size(0), -1)
         x = F.relu(self.fc1(x))
         #x = F.relu(self.fc2(x))
-        detection = torch.sigmoid(self.det_head(x)).view(-1, self.num_boxes, 4)
+        detection = torch.sigmoid(self.det_head(x).view(-1, self.num_boxes, 5))*2 * np.pi
         classification = self.cls_head(x).view(-1, self.num_boxes, self.num_classes)
         confidence = torch.sigmoid(self.conf_head(x)).view(-1, self.num_boxes, 1)
         return detection, classification, confidence

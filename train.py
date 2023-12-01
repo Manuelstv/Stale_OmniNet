@@ -5,6 +5,7 @@ import numpy as np
 from torch.utils.data import DataLoader
 #sfrom torchvision import transforms
 import torch.nn.functional as F
+from scipy.optimize import linear_sum_assignment
 
 # Import your model and dataset classes
 from model import SimpleObjectDetectorWithBackbone
@@ -15,7 +16,7 @@ import cv2
 import json
 from numpy.linalg import norm
 from skimage.io import imread
-from calculate_RoIoU import Sph
+from calculate_RoIoU_torch import Sph
 
 
 class Rotation:
@@ -41,7 +42,7 @@ class Plotting:
 def plot_bfov(image, v00, u00, a_lat, a_long, color, h, w):
     phi00 = (u00 - w / 2.) * ((2. * np.pi) / w)
     theta00 = -(v00 - h / 2.) * (np.pi / h)
-    r = 100
+    r = 300
     d_lat = r / (2 * np.tan(a_lat / 2))
     d_long = r / (2 * np.tan(a_long / 2))
     p = []
@@ -54,8 +55,24 @@ def plot_bfov(image, v00, u00, a_lat, a_long, color, h, w):
     theta = np.asarray([np.arcsin(p[ij][1]) for ij in range(r * r)])
     u = (phi / (2 * np.pi) + 1. / 2.) * w
     v = h - (-theta / np.pi + 1. / 2.) * h
-    
-    return Plotting.plotEquirectangular(image, np.vstack((u, v)).T, color)
+
+    # New logic for wrapping around
+    u_wrapped = np.mod(u, w)  # Wrap around for u coordinates
+
+    # Identify points that need to be split
+    split_indices = np.where(np.abs(np.diff(u_wrapped)) >= w / 2)[0]
+
+    # Plot the parts that do not require splitting
+    if len(split_indices) == 0:
+        return Plotting.plotEquirectangular(image, np.vstack((u_wrapped, v)).T, color)
+
+    # Plotting the parts that require splitting
+    for idx in range(len(split_indices) + 1):
+        start_idx = split_indices[idx - 1] + 1 if idx > 0 else 0
+        end_idx = split_indices[idx] + 1 if idx < len(split_indices) else len(u_wrapped)
+        Plotting.plotEquirectangular(image, np.vstack((u_wrapped[start_idx:end_idx], v[start_idx:end_idx])).T, color)
+
+    return image
 
 def process_and_save_image(images, boxes, image_index, color, save_path):
     """
@@ -108,6 +125,46 @@ def transFormat(gt):
 
     return ann
 
+class SphericalIoULoss(nn.Module):
+    def __init__(self):
+        super(SphericalIoULoss, self).__init__()
+
+    def forward(self, preds, targets):
+        """
+        Compute the spherical IoU loss.
+
+        Args:
+        - preds: Predicted bounding boxes, [N, 5] (center_x, center_y, fov_x, fov_y, angle)
+        - targets: Ground truth bounding boxes, [N, 5] (center_x, center_y, fov_x, fov_y, angle)
+
+        Returns:
+        - loss: Mean spherical IoU loss
+        """
+        # Ensure preds and targets are tensors
+        preds = torch.tensor(preds, dtype=torch.float32)
+        targets = torch.tensor(targets, dtype=torch.float32)
+
+        # Calculate spherical IoU
+        sph_iou = Sph().sphIoU(preds, targets)
+
+        # IoU loss is 1 - IoU
+        loss = 1 - sph_iou
+
+        return loss.mean()
+
+def match_bfov_with_hungarian(spherical_iou_matrix):
+    # Convert the IoU matrix to a cost matrix for the Hungarian algorithm
+    cost_matrix = 1 - spherical_iou_matrix
+
+    # Apply the Hungarian algorithm (linear_sum_assignment) to the cost matrix
+    row_indices, col_indices = linear_sum_assignment(cost_matrix)
+
+    # Each pair of (row_indices[i], col_indices[i]) represents a match
+    matches = list(zip(row_indices, col_indices))
+
+    # Returns a list of tuples; each tuple contains the indices of the matched predictions and ground truths
+    return matches
+
 torch.cuda.empty_cache()
 # Set device
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -152,8 +209,18 @@ classification_criterion = FocalLoss()
 confidence_criterion = nn.BCELoss()
 optimizer = optim.Adam(model.parameters(), lr=learning_rate)
 
+
+gt2 = np.array([
+            [  0.1224 *2 * np.pi,   0.5542* np.pi,  20.0000/180* np.pi,  92.0000/180* np.pi, 0],
+            [  0.4323 * 2 * np.pi,   0.5448* np.pi,  12.0000/180* np.pi,  68.0000/180* np.pi, 0],
+            [  0.7286*2* np.pi,   0.4792* np.pi,  68.0000/180* np.pi,  64.0000/180* np.pi, 0],
+            [  0.4802*2* np.pi,   0.4708* np.pi,   4.0000/180* np.pi,  28.0000/180* np.pi, 0],
+            [  0.2948*2* np.pi,   0.5573* np.pi,  92.0000/180* np.pi, 108.0000/180* np.pi, 0]])
+
 x = 10  # Define the interval for printing the loss
 background_class_label = 0
+
+sph_iou_loss_fn = SphericalIoULoss()
 
 for epoch in range(num_epochs):
     model.train()
@@ -173,72 +240,74 @@ for epoch in range(num_epochs):
 
         for boxes, labels, det_preds, cls_preds, conf_preds in zip(boxes_list, labels_list, detection_preds, classification_preds, confidence_preds):
             boxes = boxes.to(device)
+
+            gt = det_preds.to(device)
+
             labels = labels.to(device)
 
-            color_map = {4: (0, 0, 255), 5: (0, 255, 0), 6: (255, 0, 0), 12: (255, 255, 0), 17: (0, 255, 255), 25: (255, 0, 255), 26: (128, 128, 0), 27: (0, 128, 128), 30: (128, 0, 128), 34: (128, 128, 128), 35: (64, 0, 0), 36: (0, 64, 0)}
-
-            gt = np.array([
-            [  0.1224,   0.5542,  20.0000/180,  92.0000/180],
-            [  0.4323,   0.5448,  12.0000/180,  68.0000/180],
-            [  0.7286,   0.4792,  68.0000/180,  64.0000/180],
-            [  0.4802,   0.4708,   4.0000/180,  28.0000/180],
-            [  0.2948,   0.5573,  92.0000/180, 108.0000/180]])
-
+            '''
             img1 = images[0].permute(1,2,0).cpu().numpy()*255
 
             #@images = images.cpu().numpy() * 255
             img = process_and_save_image(img1, gt, 0, (0,255,0), f'/home/mstveras/img.png')
 
-            boxes = boxes.cpu()
-
             img = process_and_save_image(img, boxes, 0, (255,0,0), f'/home/mstveras/img2.png')
 
-            zeros_column = np.zeros((gt.shape[0], 1))
+            #zeros_column = np.zeros((gt.shape[0], 1))
 
             # Stack the zeros column with the original array
-            gt = np.hstack((gt, zeros_column))
-            zeros_column = np.zeros((boxes.shape[0], 1))
+            #gt = np.hstack((gt, zeros_column))
+            #zeros_column = np.zeros((boxes.shape[0], 1))
 
             # Stack the zeros column with the original array
-            boxes = np.hstack((boxes, zeros_column))
+            #boxes = np.hstack((boxes, zeros_column))'''
 
-            _gt = transFormat(gt)
-            _pred = transFormat(boxes)
-
-            sphIoU = Sph().sphIoU(_pred, _gt)
-
+            sphIoU = Sph().sphIoU(boxes, gt)
             print(sphIoU)
 
-            # Determine best match for each prediction
-            #matched_indices = torch.argmax(iou_matrix, dim=1)
-            #max_ious = iou_matrix[range(len(det_preds)), matched_indices]
-            
-            # Apply IoU threshold to determine positive matches
-            #matched_gt_indices = matched_indices[max_ious > 0.1]
-            #unmatched_indices = matched_indices[max_ious <= 0.1]
+            #each tuple contains the indices of the matched predictions and ground truths
+            matches = match_bfov_with_hungarian(sphIoU)
 
-            # Set confidence targets based on matching
-            #target_confidences = torch.zeros_like(conf_preds[:, 0])
-            #matched_gt_indices = matched_indices[matched_indices != -1]
-            #unmatched_gt_indices = matched_indices[matched_indices == -1]
+            total_regression_loss = 0
+            total_classification_loss = 0
+            total_confidence_loss = 0
+            '''
+            for pred_idx, gt_idx in matches:
+                matched_pred = det_preds[pred_idx].unsqueeze(0)  # Add batch dimension
+                matched_gt = boxes[gt_idx].unsqueeze(0)         # Add batch dimension
 
-            #target_confidences[matched_gt_indices] = 1
+                # Calculate the spherical IoU loss
+                regression_loss = sph_iou_loss_fn(matched_pred, matched_gt)
 
-            # Classification labels - background class for unmatched, actual labels for matched
-            #cls_labels = torch.full((len(cls_preds),), background_class_label, device=device, dtype=torch.long)
+                # Accumulate the regression loss
+                total_regression_loss += regression_loss.item()
 
-            #cls_labels[matched_gt_indices] = labels[matched_indices[matched_indices != -1]]
+            matched_gt_indices = []
+            matched_pred_indices = []
 
-            # Compute losses
-            #regression_loss = iou_loss(det_preds, boxes, matched_indices)
+            for pred_idx, gt_idx in matches:
+                matched_pred_indices.append(pred_idx)
+                matched_gt_indices.append(gt_idx)
 
-            #classification_loss = classification_criterion(cls_preds, cls_labels)
-            #onfidence_loss = confidence_criterion(conf_preds[:, 0], target_confidences)
+            matched_pred_indices = torch.tensor(matched_pred_indices, device=device)
+            matched_gt_indices = torch.tensor(matched_gt_indices, device=device)
+
+            # Extract the matched predictions and ground truths
+            matched_preds = det_preds[matched_pred_indices]
+            matched_gts = boxes[matched_gt_indices]
+
+            # Classification and confidence targets
+            cls_labels = labels[matched_gt_indices]
+            target_confidences = torch.ones_like(cls_labels, dtype=torch.float, device=device)  # Assuming 1 for object presence
+
+            # Compute classification and confidence losses
+            classification_loss = classification_criterion(cls_preds[matched_pred_indices], cls_labels)
+            confidence_loss = confidence_criterion(conf_preds[matched_pred_indices, 0], target_confidences)
 
             # Accumulate losses
-            #total_regression_loss += regression_loss
-            #total_confidence_loss += confidence_loss
-            #total_classification_loss += classification_loss
+            total_regression_loss += regression_loss
+            total_confidence_loss += confidence_loss
+            total_classification_loss += classification_loss'''
 
         # Compute the average losses
         avg_regression_loss = total_regression_loss / len(boxes_list)
@@ -249,7 +318,7 @@ for epoch in range(num_epochs):
         print(f"Epoch {epoch}/{num_epochs}: Loss: {total_loss}")
 
         # Backward and optimize
-        total_loss.backward()
+        t#otal_loss.backward()
         optimizer.step()
 
          

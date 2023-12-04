@@ -30,7 +30,7 @@ class SimpleObjectDetectorWithBackbone(nn.Module):
         x = x.view(x.size(0), -1)
         x = F.relu(self.fc1(x))
         #x = F.relu(self.fc2(x))
-        detection = torch.sigmoid(self.det_head(x).view(-1, self.num_boxes, 5))*2 * np.pi
+        detection = self.det_head(x).view(-1, self.num_boxes, 5)
         classification = self.cls_head(x).view(-1, self.num_boxes, self.num_classes)
         confidence = torch.sigmoid(self.conf_head(x)).view(-1, self.num_boxes, 1)
         return detection, classification, confidence

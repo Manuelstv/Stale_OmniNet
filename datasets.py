@@ -91,8 +91,8 @@ class PascalVOCDataset(Dataset):
             if True:
                 bbox = obj.find('bndbox')
 
-                x_center = int(bbox.find('x_center').text) / 600 * 2* np.pi
-                y_center = int(bbox.find('y_center').text) / 300 *np.pi
+                x_center = int(bbox.find('x_center').text) / 600 * 2*np.pi - np.pi
+                y_center = int(bbox.find('y_center').text) / 300 *np.pi- np.pi
                 width = (float(bbox.find('width').text)) /180 * np.pi
                 height = (float(bbox.find('height').text)) /180 *np.pi
                 boxes.append([x_center, y_center, width, height, 0])

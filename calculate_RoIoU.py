@@ -49,7 +49,7 @@ class Sph:
     def getNormal(self, bbox):
         '''Normal Vectors Computation'''
 
-        bbox[:, [4]] =0
+        #bbox[:, [4]] =0
         
         theta, phi, fov_x_half, fov_y_half, angle = bbox[:, [
             0]], bbox[:, [1]], bbox[:, [2]] / 2, bbox[:, [3]] / 2, bbox[:, [4]]

@@ -10,7 +10,7 @@ from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss
 
 
 # Import your model and dataset classes
-from model import SimpleObjectDetectorWithBackbone
+from model import SimpleObjectDetectorWithBackbone, SimpleObjectDetector
 from datasets import PascalVOCDataset
 torch.cuda.empty_cache()
 
@@ -141,6 +141,8 @@ class SphericalIoULoss(nn.Module):
 
         # Calculate spherical IoU
         sph_iou = Sph().sphIoU(preds, targets)
+        print('oiiii')
+        print(sph_iou)
 
         # IoU loss is 1 - IoU
         loss = 1 - sph_iou
@@ -167,15 +169,47 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 # Hyperparameters
 num_epochs = 50
 learning_rate = 0.0001
-batch_size = 8
+batch_size = 1
 num_classes = 37
 
 
 # Initialize dataset and dataloader
-train_dataset = PascalVOCDataset(split='TRAIN', keep_difficult=False, max_images=400)
+train_dataset = PascalVOCDataset(split='TRAIN', keep_difficult=False, max_images=10)
 train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, collate_fn=train_dataset.collate_fn)
 
-model = SimpleObjectDetectorWithBackbone(num_boxes=30, num_classes=num_classes).to(device)
+
+import torch.nn.init as init
+
+def init_weights(m):
+    if isinstance(m, nn.Linear):
+        # Choose the initialization method here (e.g., Xavier, He)
+        init.xavier_uniform_(m.weight)
+        if m.bias is not None:
+            init.zeros_(m.bias)
+
+
+model = SimpleObjectDetectorWithBackbone(num_boxes=5, num_classes=num_classes).to(device)
+model.fc1.apply(init_weights)
+model.det_head.apply(init_weights)
+model.cls_head.apply(init_weights)
+model.conf_head.apply(init_weights)
+
+
+def init_weights_custom(m):
+    if isinstance(m, nn.Conv2d):
+        init.kaiming_uniform_(m.weight, mode='fan_in', nonlinearity='relu')
+        if m.bias is not None:
+            init.zeros_(m.bias)
+    elif isinstance(m, nn.Linear):
+        init.xavier_uniform_(m.weight)
+        if m.bias is not None:
+            init.zeros_(m.bias)
+    elif isinstance(m, nn.BatchNorm2d):
+        init.ones_(m.weight)
+        init.zeros_(m.bias)
+
+#model = SimpleObjectDetector().to(device)
+#model.apply(init_weights_custom)
 
 class FocalLoss(nn.Module):
     def __init__(self, alpha=0.25, gamma=2.0, num_classes=37):
@@ -214,8 +248,6 @@ gt2 = np.array([
 
 x = 100  # Define the interval for printing the loss
 background_class_label = 0
-n=0
-
 sph_iou_loss_fn = SphericalIoULoss()
 
 for epoch in range(num_epochs):
@@ -234,8 +266,9 @@ for epoch in range(num_epochs):
         total_regression_loss = torch.zeros(1, device=device, requires_grad=True)
         total_confidence_loss = 0
         total_classification_loss = 0
-        n+=1
+        n=0
 
+        #iteration over batch
         for boxes, labels, det_preds, cls_preds, conf_preds in zip(boxes_list, labels_list, detection_preds, classification_preds, confidence_preds):
             # Convert to the correct device
             boxes = boxes.to(device)
@@ -246,7 +279,8 @@ for epoch in range(num_epochs):
             det_preds = det_preds.cpu().detach().numpy()
             boxes = boxes.cpu().detach().numpy()
 
-            sphIoU = Sph().sphIoU(det_preds, boxes)
+            sphIoU = Sph().sphIoU(boxes, boxes)
+            print(sphIoU)
             matches = match_bfov_with_hungarian(sphIoU)
 
             # Calculate IoU-based regression loss
@@ -257,7 +291,6 @@ for epoch in range(num_epochs):
 
             img1 = images[n].permute(1,2,0).cpu().numpy()*255
 
-            print(boxes.shape)
             img = process_and_save_image(img1, boxes, (0,255,0), f'/home/mstveras/images/img.png')
             img = process_and_save_image(img, det_preds, (255,0,0), f'/home/mstveras/images/img2.png')
 
@@ -292,6 +325,7 @@ for epoch in range(num_epochs):
             confidence_loss = bce_loss(aligned_conf_preds, aligned_conf_gt)
             classification_loss = cross_entropy_loss(aligned_cls_preds, aligned_labels)'''
 
+            n+=1
             # Accumulate losses
             total_regression_loss += regression_loss  # Assuming regression_loss is a tensor
             #total_confidence_loss += confidence_loss.item()

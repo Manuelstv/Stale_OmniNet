@@ -10,7 +10,7 @@ from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss
 
 
 # Import your model and dataset classes
-from model import SimpleObjectDetectorWithBackbone, SimpleObjectDetector
+from model import SimpleObjectDetectorWithBackbone
 from datasets import PascalVOCDataset
 torch.cuda.empty_cache()
 
@@ -141,8 +141,6 @@ class SphericalIoULoss(nn.Module):
 
         # Calculate spherical IoU
         sph_iou = Sph().sphIoU(preds, targets)
-        print('oiiii')
-        print(sph_iou)
 
         # IoU loss is 1 - IoU
         loss = 1 - sph_iou
@@ -168,48 +166,16 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # Hyperparameters
 num_epochs = 50
-learning_rate = 0.0001
-batch_size = 1
+learning_rate = 0.001
+batch_size = 8
 num_classes = 37
 
 
 # Initialize dataset and dataloader
-train_dataset = PascalVOCDataset(split='TRAIN', keep_difficult=False, max_images=10)
+train_dataset = PascalVOCDataset(split='TRAIN', keep_difficult=False, max_images=400)
 train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, collate_fn=train_dataset.collate_fn)
 
-
-import torch.nn.init as init
-
-def init_weights(m):
-    if isinstance(m, nn.Linear):
-        # Choose the initialization method here (e.g., Xavier, He)
-        init.xavier_uniform_(m.weight)
-        if m.bias is not None:
-            init.zeros_(m.bias)
-
-
-model = SimpleObjectDetectorWithBackbone(num_boxes=5, num_classes=num_classes).to(device)
-model.fc1.apply(init_weights)
-model.det_head.apply(init_weights)
-model.cls_head.apply(init_weights)
-model.conf_head.apply(init_weights)
-
-
-def init_weights_custom(m):
-    if isinstance(m, nn.Conv2d):
-        init.kaiming_uniform_(m.weight, mode='fan_in', nonlinearity='relu')
-        if m.bias is not None:
-            init.zeros_(m.bias)
-    elif isinstance(m, nn.Linear):
-        init.xavier_uniform_(m.weight)
-        if m.bias is not None:
-            init.zeros_(m.bias)
-    elif isinstance(m, nn.BatchNorm2d):
-        init.ones_(m.weight)
-        init.zeros_(m.bias)
-
-#model = SimpleObjectDetector().to(device)
-#model.apply(init_weights_custom)
+model = SimpleObjectDetectorWithBackbone(num_boxes=30, num_classes=num_classes).to(device)
 
 class FocalLoss(nn.Module):
     def __init__(self, alpha=0.25, gamma=2.0, num_classes=37):
@@ -279,8 +245,7 @@ for epoch in range(num_epochs):
             det_preds = det_preds.cpu().detach().numpy()
             boxes = boxes.cpu().detach().numpy()
 
-            sphIoU = Sph().sphIoU(boxes, boxes)
-            print(sphIoU)
+            sphIoU = Sph().sphIoU(det_preds, boxes)
             matches = match_bfov_with_hungarian(sphIoU)
 
             # Calculate IoU-based regression loss

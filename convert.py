@@ -10,24 +10,21 @@ def pixel_to_spherical(x, y, image_width, image_height, HFOV, VFOV):
     return theta, phi
 
 # Assume a bounding box in pixel coordinates
-bbox_pixel_coords = [x_min, y_min, x_max, y_max]
+#bbox_pixel_coords = [x_c, y_c, alpha, beta]
+bbox_pixel_coords = [0, 300,4,4]
 
 # Image dimensions and camera FoV
-image_width = 1920  # Example width
-image_height = 1080  # Example height
+image_width = 600  # Example width
+image_height = 300  # Example height
 HFOV = 360  # Example HFOV for a 360° camera
 VFOV = 180  # Example VFOV for a 360° camera
 
 # Calculate center coordinates in spherical format
 theta_center, phi_center = pixel_to_spherical(
-    (bbox_pixel_coords[0] + bbox_pixel_coords[2]) / 2,
-    (bbox_pixel_coords[1] + bbox_pixel_coords[3]) / 2,
+    bbox_pixel_coords[0],
+    bbox_pixel_coords[1],
     image_width, image_height, HFOV, VFOV
 )
 
-# Calculate alpha and beta based on the bounding box size and image dimensions
-alpha = (bbox_pixel_coords[2] - bbox_pixel_coords[0]) / image_width * HFOV
-beta = (bbox_pixel_coords[3] - bbox_pixel_coords[1]) / image_height * VFOV
-
 # The final FoV-BB format
-fov_bb = (theta_center, phi_center, alpha, beta)
+print((theta_center, phi_center))

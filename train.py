@@ -7,10 +7,9 @@ from torch.utils.data import DataLoader
 import torch.nn.functional as F
 from scipy.optimize import linear_sum_assignment
 from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss
+import torch.nn.init as init
 
-
-# Import your model and dataset classes
-from model import SimpleObjectDetectorWithBackbone
+from model import SimpleObjectDetectorWithBackbone, SimpleObjectDetector
 from datasets import PascalVOCDataset
 torch.cuda.empty_cache()
 
@@ -40,41 +39,6 @@ class Plotting:
         hull = cv2.convexHull(kernel)
         cv2.polylines(resized_image, [hull], isClosed=True, color=color, thickness=2)
         return resized_image
-
-def plot_bfov2(image, v00, u00, a_lat, a_long, color, h, w):
-    phi00 = (u00 - w / 2.) * ((2. * np.pi) / w)
-    theta00 = -(v00 - h / 2.) * (np.pi / h)
-    r = 300
-    d_lat = r / (2 * np.tan(a_lat / 2))
-    d_long = r / (2 * np.tan(a_long / 2))
-    p = []
-    for i in range(-(r - 1) // 2, (r + 1) // 2):
-        for j in range(-(r - 1) // 2, (r + 1) // 2):
-            p += [np.asarray([i * d_lat / d_long, j, d_lat])]
-    R = np.dot(Rotation.Ry(phi00), Rotation.Rx(theta00))
-    p = np.asarray([np.dot(R, (p[ij] / norm(p[ij]))) for ij in range(r * r)])
-    phi = np.asarray([np.arctan2(p[ij][0], p[ij][2]) for ij in range(r * r)])
-    theta = np.asarray([np.arcsin(p[ij][1]) for ij in range(r * r)])
-    u = (phi / (2 * np.pi) + 1. / 2.) * w
-    v = h - (-theta / np.pi + 1. / 2.) * h
-
-    # New logic for wrapping around
-    u_wrapped = np.mod(u, w)  # Wrap around for u coordinates
-
-    # Identify points that need to be split
-    split_indices = np.where(np.abs(np.diff(u_wrapped)) >= w / 2)[0]
-
-    # Plot the parts that do not require splitting
-    if len(split_indices) == 0:
-        return Plotting.plotEquirectangular(image, np.vstack((u_wrapped, v)).T, color)
-
-    # Plotting the parts that require splitting
-    for idx in range(len(split_indices) + 1):
-        start_idx = split_indices[idx - 1] + 1 if idx > 0 else 0
-        end_idx = split_indices[idx] + 1 if idx < len(split_indices) else len(u_wrapped)
-        Plotting.plotEquirectangular(image, np.vstack((u_wrapped[start_idx:end_idx], v[start_idx:end_idx])).T, color)
-
-    return image
 
 
 def plot_bfov(image, v00, u00, a_lat, a_long, color, h, w):
@@ -106,9 +70,6 @@ def process_and_save_image(images, boxes, color, save_path):
     - image_index: The index of the image in the images list to process.
     - file_path: The path to save the processed image.
     """
-    # Process the image
-
-    # Plot each bounding box
     for box in boxes:
         box = box
         u00, v00, a_lat1, a_long1 = 600*box[0]/ (2*np.pi), 300*box[1]/np.pi, 180*box[2]/np.pi, 180*box[3]/np.pi
@@ -116,203 +77,181 @@ def process_and_save_image(images, boxes, color, save_path):
         a_long = np.radians(a_lat1)
         images = plot_bfov(images, v00, u00, a_lat, a_long, color, 300, 600)
 
-    # Save the processed image
     cv2.imwrite(save_path, images)
     return images
 
-class SphericalIoULoss(nn.Module):
-    def __init__(self):
-        super(SphericalIoULoss, self).__init__()
+#alpha e beta pi ou pi/2???
+def fov_iou_single(Bg, Bd):
+    # Unpack the bounding box coordinates
+    theta_g, phi_g, alpha_g, beta_g, _ = Bg
+    theta_d, phi_d, alpha_d, beta_d, _ = Bd
 
-    def forward(self, preds, targets):
-        """
-        Compute the spherical IoU loss.
+    # Step 1: Compute FoV Area of Bg and Bd
+    A_Bg = alpha_g * beta_g
+    A_Bd = alpha_d * beta_d
 
-        Args:
-        - preds: Predicted bounding boxes, [N, 5] (center_x, center_y, fov_x, fov_y, angle)
-        - targets: Ground truth bounding boxes, [N, 5] (center_x, center_y, fov_x, fov_y, angle)
+    # Step 2: Compute FoV distance between Bg and Bd
+    delta_fov = (theta_d - theta_g) * torch.cos((phi_g + phi_d) / 2)
 
-        Returns:
-        - loss: Mean spherical IoU loss
-        """
-        # Ensure preds and targets are tensors
-        #preds = torch.tensor(preds, dtype=torch.float32)
-        #targets = torch.tensor(targets, dtype=torch.float32)
+    # Step 3: Build an approximate FoV intersection I
+    theta_I_min = torch.max(-alpha_g / 2, delta_fov - alpha_d / 2)
+    theta_I_max = torch.min(alpha_g / 2, delta_fov + alpha_d / 2)
+    phi_I_min = torch.max(phi_g - beta_g / 2, phi_d - beta_d / 2)
+    phi_I_max = torch.min(phi_g + beta_g / 2, phi_d + beta_d / 2)
 
-        # Calculate spherical IoU
-        sph_iou = Sph().sphIoU(preds, targets)
+    # Step 4: Compute area of FoV intersection I and union U
+    A_I = (theta_I_max - theta_I_min) * (phi_I_max - phi_I_min)
+    A_U = A_Bg + A_Bd - A_I
 
-        # IoU loss is 1 - IoU
-        loss = 1 - sph_iou
+    # Step 5: Compute FoV-IoU
+    fov_iou = A_I / A_U
 
-        return loss.mean()
+    return fov_iou
 
-def match_bfov_with_hungarian(spherical_iou_matrix):
-    # Convert the IoU matrix to a cost matrix for the Hungarian algorithm
-    cost_matrix = 1 - spherical_iou_matrix
+def fov_iou_batch(gt_boxes, pred_boxes):
+    # Initialize a tensor to store IoU values
+    ious = torch.zeros((len(gt_boxes), len(pred_boxes)))
 
-    # Apply the Hungarian algorithm (linear_sum_assignment) to the cost matrix
-    row_indices, col_indices = linear_sum_assignment(cost_matrix)
+    # Iterate over each ground truth and predicted box pair
+    for i, Bg in enumerate(gt_boxes):
+        for j, Bd in enumerate(pred_boxes):
+            ious[i, j] = fov_iou_single(Bg, Bd)
 
-    # Each pair of (row_indices[i], col_indices[i]) represents a match
-    matches = list(zip(row_indices, col_indices))
+    return ious
 
-    # Returns a list of tuples; each tuple contains the indices of the matched predictions and ground truths
-    return matches
+def hungarian_matching(gt_boxes, pred_boxes):
+    # Compute the batch IoUs
+    iou_matrix = fov_iou_batch(gt_boxes, pred_boxes)
+    print(iou_matrix)
+
+    # Convert IoUs to cost
+    cost_matrix = 1 - iou_matrix.detach().numpy()
+
+    # Apply Hungarian matching
+    gt_indices, pred_indices = linear_sum_assignment(cost_matrix)
+    #print(gt_indices, pred_indices)
+
+    # Extract the matched pairs
+    matched_pairs = [(gt_boxes[i], pred_boxes[j]) for i, j in zip(gt_indices, pred_indices)]
+
+    return matched_pairs, iou_matrix[gt_indices, pred_indices]
 
 torch.cuda.empty_cache()
 # Set device
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # Hyperparameters
-num_epochs = 50
-learning_rate = 0.0001
+num_epochs = 5000
+learning_rate = 0.001
 batch_size = 8
 num_classes = 37
 
 
 # Initialize dataset and dataloader
-train_dataset = PascalVOCDataset(split='TRAIN', keep_difficult=False, max_images=400)
+train_dataset = PascalVOCDataset(split='TRAIN', keep_difficult=False, max_images=80)
 train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, collate_fn=train_dataset.collate_fn)
 
-model = SimpleObjectDetectorWithBackbone(num_boxes=30, num_classes=num_classes).to(device)
+def init_weights(m):
+    if isinstance(m, nn.Linear):
+        # Choose the initialization method here (e.g., Xavier, He)
+        init.xavier_uniform_(m.weight)
+        if m.bias is not None:
+            init.zeros_(m.bias)
 
-class FocalLoss(nn.Module):
-    def __init__(self, alpha=0.25, gamma=2.0, num_classes=37):
-        super(FocalLoss, self).__init__()
-        self.alpha = alpha
-        self.gamma = gamma
-        self.num_classes = num_classes
 
-    def forward(self, inputs, targets):
-        # Convert targets to one-hot encoding
-        targets_one_hot = F.one_hot(targets, num_classes=self.num_classes).float()
-        
-        # Compute the binary cross-entropy loss
-        BCE_loss = F.binary_cross_entropy_with_logits(inputs, targets_one_hot, reduction='none')
+model = SimpleObjectDetector(num_boxes=5, num_classes=num_classes).to(device)
+#model.fc1.apply(init_weights)
+#model.det_head.apply(init_weights)
+#model.cls_head.apply(init_weights)
+#model.conf_head.apply(init_weights)
 
-        # Apply the focal loss formula
-        pt = torch.exp(-BCE_loss)  # prevents nans when probability 0
-        F_loss = self.alpha * (1-pt)**self.gamma * BCE_loss
-
-        return F_loss.mean()
-
-classification_criterion = FocalLoss()
-confidence_criterion = nn.BCELoss()
 optimizer = optim.Adam(model.parameters(), lr=learning_rate)
 
-bce_loss = BCEWithLogitsLoss()
-cross_entropy_loss = CrossEntropyLoss()
+'''
+conversão:
 
 
-gt2 = np.array([
-            [  0.1224 *2 * np.pi,   0.5542* np.pi,  20.0000/180* np.pi,  92.0000/180* np.pi, 0],
+
+Para o primeiro conjunto 
+
+[40,50,35,55]:
+−2.443, −2.269, 0.611, 0.960
+
+Para o segundo conjunto 
+[ 35, 20, 37, 50]
+−1.265,−1.396, 0.646, 0.873]'''
+
+
+
+gt1 = torch.tensor(np.array([
+    [-2.443+np.pi, -2.269+np.pi/2, 0.611, 0.960,0],
+    [0.1250 * 2 * np.pi, 0.5560 * np.pi, 21.0000 / 180 * np.pi, 93.0000 / 180 * np.pi, 0],
+    [0.4350 * 2 * np.pi, 0.5460 * np.pi, 13.0000 / 180 * np.pi, 69.0000 / 180 * np.pi, 0],
+    [0.7300 * 2 * np.pi, 0.4810 * np.pi, 69.0000 / 180 * np.pi, 65.0000 / 180 * np.pi, 0],
+    [0.4820 * 2 * np.pi, 0.4720 * np.pi,  5.0000 / 180 * np.pi, 29.0000 / 180 * np.pi, 0],
+    [0.2960 * 2 * np.pi, 0.5590 * np.pi, 93.0000 / 180 * np.pi, 109.0000 / 180 * np.pi, 0]
+]))
+
+
+gt2 = torch.tensor(np.array([
+            [-1.265+np.pi,-1.396+np.pi/2, 0.646, 0.873,0],
             [  0.4323 * 2 * np.pi,   0.5448* np.pi,  12.0000/180* np.pi,  68.0000/180* np.pi, 0],
+            [  0.1224 *2 * np.pi,   0.5542* np.pi,  20.0000/180* np.pi,  92.0000/180* np.pi, 0],
             [  0.7286*2* np.pi,   0.4792* np.pi,  68.0000/180* np.pi,  64.0000/180* np.pi, 0],
-            [  0.4802*2* np.pi,   0.4708* np.pi,   4.0000/180* np.pi,  28.0000/180* np.pi, 0],
-            [  0.2948*2* np.pi,   0.5573* np.pi,  92.0000/180* np.pi, 108.0000/180* np.pi, 0]])
-
-x = 100  # Define the interval for printing the loss
-background_class_label = 0
-n=0
-
-sph_iou_loss_fn = SphericalIoULoss()
+            [  0.2948*2* np.pi,   0.5573* np.pi,  92.0000/180* np.pi, 108.0000/180* np.pi, 0],
+            [  0.4802*2* np.pi,   0.4708* np.pi,   4.0000/180* np.pi,  28.0000/180* np.pi, 0]]))
 
 for epoch in range(num_epochs):
     model.train()
+    total_loss = 0
     total_matches = 0 
 
     for i, (images, boxes_list, labels_list, confidences_list) in enumerate(train_loader):
         images = images.to(device)
-
         optimizer.zero_grad()
-
         # Forward pass
         detection_preds, classification_preds, confidence_preds = model(images)
-
-        # Initialize total losses
-        total_regression_loss = torch.zeros(1, device=device, requires_grad=True)
-        total_confidence_loss = 0
-        total_classification_loss = 0
-        n+=1
+        total_regression_loss = 0
+        n=0
 
         for boxes, labels, det_preds, cls_preds, conf_preds in zip(boxes_list, labels_list, detection_preds, classification_preds, confidence_preds):
-            # Convert to the correct device
             boxes = boxes.to(device)
+            #gt2 = gt2.to(device)
+            #gt1 = gt1.to(device)
+            det_preds = det_preds.to(device)
+            
             labels = labels.to(device)
-            #conf_gt = confidences_list[i].to(device)  # Assuming confidences_list contains ground truth confidences
 
-            # Calculate IoU matrix and match predictions with ground truths (as previously described)
-            det_preds = det_preds.cpu().detach().numpy()
-            boxes = boxes.cpu().detach().numpy()
+            matches, matched_iou_scores = hungarian_matching(gt1,gt2)
+            #matched_iou_scores = torch.tensor(matched_iou_scores, device=device, dtype=torch.float32, requires_grad=True)
+            #print(1 - matched_iou_scores)
+            regression_loss = (1 - matched_iou_scores).mean()
 
-            sphIoU = Sph().sphIoU(det_preds, boxes)
-            matches = match_bfov_with_hungarian(sphIoU)
-
-            # Calculate IoU-based regression loss
-            for pred_idx, gt_idx in matches:
-                iou = sphIoU[pred_idx, gt_idx]
-                regression_loss = torch.tensor(1 - iou, device=device)  # Ensure it's a tensor
-                total_regression_loss = total_regression_loss + regression_loss
-
-            img1 = images[n].permute(1,2,0).cpu().numpy()*255
-
-            print(boxes.shape)
-            img = process_and_save_image(img1, boxes, (0,255,0), f'/home/mstveras/images/img.png')
-            img = process_and_save_image(img, det_preds, (255,0,0), f'/home/mstveras/images/img2.png')
-
+            total_regression_loss += regression_loss
             total_matches += len(matches)
-            total_regression_loss = total_regression_loss / total_matches
-            '''
+            #if epoch>0 and epoch%2000==0:
+            #if True:
+            #    img1 = images[n].permute(1,2,0).cpu().numpy()*255
+            #    img = process_and_save_image(img1, boxes.cpu().detach().numpy(), (0,255,0), f'/home/mstveras/images/img.png')
+            #    img = process_and_save_image(img, det_preds.cpu().detach().numpy(), (255,0,0), f'/home/mstveras/images/img2.png')
+            
+            #    n+=1
 
-            aligned_conf_preds = torch.zeros_like(conf_preds)
-            aligned_cls_preds = torch.zeros_like(cls_preds)
-            aligned_labels = torch.zeros(labels.size(0), dtype=torch.long)  # Adjust dtype if necessary
-            aligned_conf_gt = torch.zeros_like(conf_preds)
-
-            # Mark predictions that have matches
-            has_match = torch.zeros(conf_preds.size(0), dtype=torch.bool)
-
-            for pred_idx, gt_idx in matches:
-                if gt_idx < len(boxes):
-                    aligned_conf_preds[pred_idx] = conf_preds[pred_idx]
-                    aligned_cls_preds[pred_idx] = cls_preds[pred_idx]
-                    aligned_labels[pred_idx] = labels[gt_idx]
-                    aligned_conf_gt[pred_idx] = confidences_list[i][gt_idx]
-                    has_match[pred_idx] = True
-
-            # Handle extra predictions
-            aligned_conf_preds[~has_match] = conf_preds[~has_match]
-            aligned_cls_preds[~has_match] = cls_preds[~has_match]
-            # Assuming 0 is the index for the background or null class
-            aligned_labels[~has_match] = 0
-            aligned_conf_gt[~has_match] = 0  # Zero confidence for extra predictions
-
-            # Calculate losses
-            confidence_loss = bce_loss(aligned_conf_preds, aligned_conf_gt)
-            classification_loss = cross_entropy_loss(aligned_cls_preds, aligned_labels)'''
-
-            # Accumulate losses
-            total_regression_loss += regression_loss  # Assuming regression_loss is a tensor
-            #total_confidence_loss += confidence_loss.item()
-            #total_classification_loss += classification_loss.item()
-
-        # Compute the average losses
-        avg_regression_loss = total_regression_loss #/ len(boxes_list)
-        #avg_classification_loss = total_classification_loss / len(boxes_list)
-        #avg_confidence_loss = total_confidence_loss / len(boxes_list)
-
-        total_loss = avg_regression_loss# + avg_classification_loss + avg_confidence_loss
+        if total_matches > 0:
+            avg_regression_loss = total_regression_loss / total_matches
+        else:
+            avg_regression_loss = torch.tensor(0, device=device)
 
         # Backward pass and optimize
-        total_loss.backward()
+        #avg_regression_loss.backward()
         optimizer.step()
 
-        print(f"Epoch {epoch}/{num_epochs}: Loss: {total_loss}")
-         
+        total_loss += avg_regression_loss.item()
 
-model_file = f"best.pth"
+    avg_epoch_loss = total_loss / len(train_loader)
+    print(f"Epoch {epoch}/{num_epochs}: Loss: {avg_epoch_loss}")
+
+model_file = "best.pth"
 torch.save(model.state_dict(), model_file)
 print(f"Model saved to {model_file} after Epoch {epoch + 1}")
-
 print('Training completed.')

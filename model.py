@@ -4,6 +4,40 @@ import torch.nn.functional as F
 import torchvision.models as models
 import numpy as np
 
+
+class SimpleObjectDetectorWithBackbone2(nn.Module):
+    def __init__(self, num_boxes=50, num_classes=38, pretrained=True):
+        super(SimpleObjectDetectorWithBackbone, self).__init__()
+        self.num_boxes = num_boxes
+        self.num_classes = num_classes
+
+        # Load a pretrained ResNet-50 model
+        resnet = models.resnet50(pretrained=pretrained)
+        self.backbone = nn.Sequential(*list(resnet.children())[:-2])
+
+        # Adjust for the output size of ResNet-50
+        fc_1_features = 2048 * 7 * 7  # Example size, adjust as needed
+
+        # Fully connected layers
+        self.fc1 = nn.Linear(fc_1_features, 256)
+        self.det_head = nn.Linear(256, num_boxes * 5)  # Detection head
+        self.cls_head = nn.Linear(256, num_boxes * num_classes)  # Classification head
+        self.conf_head = nn.Linear(256, num_boxes)  # Confidence head
+
+    def forward(self, x):
+        x = self.backbone(x)
+        x = x.view(x.size(0), -1)
+        x = F.relu(self.fc1(x))
+
+        tensor = torch.sigmoid(self.det_head(x).view(-1, self.num_boxes, 5))
+        multiplier = torch.ones_like(tensor) * np.pi/4
+        multiplier[:, :, 0] *= 2  # Multiply the first column by 2
+        detection = tensor * multiplier
+
+        classification = self.cls_head(x).view(-1, self.num_boxes, self.num_classes)
+        confidence = torch.sigmoid(self.conf_head(x)).view(-1, self.num_boxes, 1)
+        return detection, classification, confidence
+
 class SimpleObjectDetectorWithBackbone(nn.Module):
     def __init__(self, num_boxes=50, num_classes=38, pretrained=True):
         super(SimpleObjectDetectorWithBackbone, self).__init__()
@@ -30,7 +64,16 @@ class SimpleObjectDetectorWithBackbone(nn.Module):
         x = x.view(x.size(0), -1)
         x = F.relu(self.fc1(x))
         #x = F.relu(self.fc2(x))
-        detection = self.det_head(x).view(-1, self.num_boxes, 5)
+
+        tensor = torch.sigmoid(self.det_head(x).view(-1, self.num_boxes, 5))
+
+        # Create a multiplier tensor
+        multiplier = torch.ones_like(tensor) * np.pi/4
+        multiplier[:, :, 0] *= 2  # Multiply the first column by 2
+
+        # Element-wise multiplication
+        detection = tensor * multiplier
+
         classification = self.cls_head(x).view(-1, self.num_boxes, self.num_classes)
         confidence = torch.sigmoid(self.conf_head(x)).view(-1, self.num_boxes, 1)
         return detection, classification, confidence
@@ -76,7 +119,7 @@ class SimpleObjectDetector(nn.Module):
         # Fully connected layers
         self.fc1 = nn.Linear(fc_1_features, fc_2_features)
         self.fc2 = nn.Linear(fc_2_features, 256)
-        self.det_head = nn.Linear(256, num_boxes * 4)  # Detection head
+        self.det_head = nn.Linear(256, num_boxes * 5)  # Detection head
         self.cls_head = nn.Linear(256, num_boxes * num_classes)  # Classification head
         self.conf_head = nn.Linear(256, num_boxes)  # Confidence head
 
@@ -92,13 +135,19 @@ class SimpleObjectDetector(nn.Module):
 
         # Flatten the features for the fully connected layer
         x = x.view(x.size(0), -1)
-        print(x.size())
-        print(x.size())
+        #print(x.size())
+        #print(x.size())
         x = self.dropout1(F.relu(self.fc1(x)))
         x = self.dropout1(F.relu(self.fc2(x)))
 
-        # Apply detection, classification, and confidence heads
-        detection = torch.sigmoid(self.det_head(x)).view(-1, self.num_boxes, 4)
+        tensor = torch.sigmoid(self.det_head(x).view(-1, self.num_boxes, 5))
+
+        # Create a multiplier tensor
+        multiplier = torch.ones_like(tensor) * np.pi
+        multiplier[:, :, 0] *= 2  # Multiply the first column by 2
+
+        # Element-wise multiplication
+        detection = tensor * multiplier
         classification = self.cls_head(x).view(-1, self.num_boxes, self.num_classes)
         confidence = torch.sigmoid(self.conf_head(x)).view(-1, self.num_boxes, 1)
 

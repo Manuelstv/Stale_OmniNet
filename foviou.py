@@ -4,26 +4,25 @@ import math
 def deg_to_rad(degrees):
     return [math.radians(degree) for degree in degrees]
 
-# Função para calcular o FoV-IoU
 def fov_iou(Bg, Bd):
-    θg, φg, αg, βg = Bg  # Desempacotando os valores da bounding box da verdade do terreno
-    θd, φd, αd, βd = Bd  # Desempacotando os valores da bounding box detectada
+    theta_g, phi_g, alpha_g, beta_g, _ = Bg  # Desempacotando os valores da bounding box da verdade do terreno
+    theta_d, phi_d, alpha_d, beta_d, _ = Bd  # Desempacotando os valores da bounding box detectada
 
     # Passo 1: Calcular a Área do FoV de Bg e Bd
-    A_Bg = αg * βg
-    A_Bd = αd * βd
+    A_Bg = alpha_g * beta_g
+    A_Bd = alpha_d * beta_d
 
     # Passo 2: Calcular a Distância do FoV entre Bg e Bd
-    Δfov = (θd - θg) * math.cos((φg + φd) / 2)
+    delta_fov = (theta_d - theta_g) * math.cos((phi_g + phi_d) / 2)
 
     # Passo 3: Construir uma Intersecção Aproximada do FoV
-    θI_min = max(-αg / 2, Δfov - αd / 2)
-    θI_max = min(αg / 2, Δfov + αd / 2)
-    φI_min = max(φg - βg / 2, φd - βd / 2)
-    φI_max = min(φg + βg / 2, φd + βd / 2)
+    theta_I_min = max(-alpha_g / 2, delta_fov - alpha_d / 2)
+    theta_I_max = min(alpha_g / 2, delta_fov + alpha_d / 2)
+    phi_I_min = max(phi_g - beta_g / 2, phi_d - beta_d / 2)
+    phi_I_max = min(phi_g + beta_g / 2, phi_d + beta_d / 2)
 
     # Passo 4: Calcular a Área da Intersecção e da União do FoV
-    A_I = (θI_max - θI_min) * (φI_max - φI_min)
+    A_I = (theta_I_max - theta_I_min) * (phi_I_max - phi_I_min)
     A_U = A_Bg + A_Bd - A_I
 
     # Passo 5: Calcular o FoV-IoU
@@ -31,9 +30,10 @@ def fov_iou(Bg, Bd):
 
     return FoV_IoU
 
+
 # Exemplo de uso
-b1 = deg_to_rad([40, 50, 35, 55])  # Bg
-b2 = deg_to_rad([35, 20, 37, 50])  # Bd
+b1 = deg_to_rad([40, 50, 35, 55, 0])  # Bg
+b2 = deg_to_rad([35, 20, 37, 50, 0])  # Bd
 
 print(b1, b2)
 

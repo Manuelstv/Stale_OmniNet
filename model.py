@@ -29,11 +29,18 @@ class SimpleObjectDetectorWithBackbone2(nn.Module):
         x = x.view(x.size(0), -1)
         x = F.relu(self.fc1(x))
 
-        tensor = torch.sigmoid(self.det_head(x).view(-1, self.num_boxes, 5))
-        multiplier = torch.ones_like(tensor) * np.pi/4
-        multiplier[:, :, 0] *= 2  # Multiply the first column by 2
-        detection = tensor * multiplier
 
+        #could be optimized
+        detection_raw = self.det_head(x).view(-1, self.num_boxes, 5)
+
+        # Apply sigmoid to the width, height, and class_confidence
+        detection[:, :, 2:] = torch.sigmoid(detection_raw[:, :, 2:])
+
+        # Apply tanh to the center_x and center_y and rescale to (-1, 1)
+        detection[:, :, 0:2] = torch.tanh(detection_raw[:, :, 0:2])
+
+        detection = detection.view(-1, self.num_boxes, 5)
+        
         classification = self.cls_head(x).view(-1, self.num_boxes, self.num_classes)
         confidence = torch.sigmoid(self.conf_head(x)).view(-1, self.num_boxes, 1)
         return detection, classification, confidence

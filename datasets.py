@@ -86,15 +86,35 @@ class PascalVOCDataset(Dataset):
         'window': 35,
         'wine glass': 36}
 
+        w, h = 1920, 960
+        new_w, new_h = 600, 300
+
+
+        # The coordinates for each bounding box are given in the format (θ, ϕ, α, β), where:
+        # θ (theta) represents the longitudinal angle of the bounding box center. This is an angle that goes around the equator of the sphere, 
+        # with 0° usually being the prime meridian, and it ranges from -180° to 180°.
+        #
+        # ϕ (phi) represents the latitudinal angle of the bounding box center. This is an angle that goes from the south to the north pole of the sphere, 
+        # with 0° being the equator, and it ranges from -90° to 90°.
+        #
+        # α (alpha) is the horizontal field of view of the bounding box. This is the angular extent of the box measured in the plane parallel to the equator, 
+        # indicating how wide the box is from left to right.
+        #
+        # β (beta) is the vertical field of view of the bounding box. This is the angular extent of the box measured in a plane perpendicular to the equator, 
+        # indicating the height of the box from top to bottom.
+
+
         for obj in root.findall('object'):
             #if obj.find('name').text == 'light':  # Check if the object is a person
             if True:
                 bbox = obj.find('bndbox')
 
-                x_center = int(bbox.find('x_center').text) / 600 * 2*np.pi
-                y_center = int(bbox.find('y_center').text) / 300 *np.pi
-                width = (float(bbox.find('width').text)) /180 * np.pi
-                height = (float(bbox.find('height').text)) /180 *np.pi
+                # Normalize pixel coordinates of center to [-1, 1]
+                x_center = int(bbox.find('x_center').text)*(new_w/w)/(600/2)-1
+                y_center = int(bbox.find('y_center').text)*(new_h/h)/(300/2)-1 
+                width = (float(bbox.find('width').text))/90
+                height = (int(bbox.find('height').text))/90
+
                 boxes.append([x_center, y_center, width, height, 0])
                 labels.append(label_mapping[obj.find('name').text])
                 confidences.append(1)
@@ -102,7 +122,10 @@ class PascalVOCDataset(Dataset):
         boxes = torch.FloatTensor(boxes)
         labels = torch.LongTensor(labels)
         confidences = torch.FloatTensor(confidences).unsqueeze(1)  # Convert to tensor
-        image, boxes, labels, difficulties = transform(image, boxes, labels, difficulties, split=self.split, new_w = 600, new_h = 300) 
+        
+        #CHECAR ESSA PARTE!!!!!!
+        
+        image, labels, difficulties = transform(image, labels, difficulties, split=self.split, new_w = 600, new_h = 300) 
 
 
         return image, boxes, labels, confidences

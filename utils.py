@@ -581,7 +581,7 @@ def photometric_distort(image):
     return new_image
 
 
-def transform(image, boxes, labels, difficulties, split, new_w, new_h):
+def transform(image, labels, difficulties, split, new_w, new_h):
     """
     Apply the transformations above.
 
@@ -601,7 +601,6 @@ def transform(image, boxes, labels, difficulties, split, new_w, new_h):
 
     new_image = image
     h, w = image.shape[:2]
-    new_boxes = boxes
     new_labels = labels
     new_difficulties = difficulties
     # Skip the following operations for evaluation/testing
@@ -632,8 +631,8 @@ def transform(image, boxes, labels, difficulties, split, new_w, new_h):
         #    new_image, new_boxes = flip(new_image, new_boxes)
         
 
-    new_boxes[:,0] = boxes[:,0] * (new_w / w)
-    new_boxes[:,1] = boxes[:,1] * (new_h / h)
+    #new_boxes[:,0] = boxes[:,0] * (new_w / w)
+    #new_boxes[:,1] = boxes[:,1] * (new_h / h)
 
     # Resize image to (300, 300) - this also converts absolute boundary coordinates to their fractional form
     #new_image, new_boxes = resize_cv2(new_image, new_boxes, dims=(300, 300))
@@ -645,7 +644,7 @@ def transform(image, boxes, labels, difficulties, split, new_w, new_h):
     # Normalize by mean and standard deviation of ImageNet data that our base VGG was trained on
     #new_image = FT.normalize(new_image, mean=mean, std=std)
 
-    return new_image, new_boxes, new_labels, new_difficulties
+    return new_image, new_labels, new_difficulties
 
 
 def adjust_learning_rate(optimizer, scale):

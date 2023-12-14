@@ -28,14 +28,17 @@ def fov_iou(Bg, Bd):
     # Passo 5: Calcular o FoV-IoU
     FoV_IoU = A_I / A_U
 
-    return max(FoV_IoU,0)
+    FoV_IoU = max(FoV_IoU,0)
+    FoV_IoU = min(FoV_IoU,1)
+
+    return FoV_IoU
 
 
 # Exemplo de uso
-b1 = deg_to_rad([40, 50, 35, 55, 0])  # Bg
-b2 = deg_to_rad([35, 20, 37, 50, 0])  # Bd
+b1 = deg_to_rad([40, 50, 35, 55,0])  # Bg
+b2 = deg_to_rad([55, 40, 60, 60,0])  # Bd
 
-print(b1, b2)
+#b3 = deg_to_rad([-76,  -2,   4,   8,   0])
 
 fov_iou_result = fov_iou(b1, b2)
 print(fov_iou_result)

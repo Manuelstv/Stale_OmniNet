@@ -72,18 +72,19 @@ class SimpleObjectDetectorWithBackbone(nn.Module):
         x = F.relu(self.fc1(x))
         #x = F.relu(self.fc2(x))
 
-        tensor = torch.sigmoid(self.det_head(x).view(-1, self.num_boxes, 5))
+        detection_output = self.det_head(x).view(-1, self.num_boxes, 5)
+        classification_output = self.cls_head(x).view(-1, self.num_boxes, self.num_classes)
+        confidence_output = torch.sigmoid(self.conf_head(x)).view(-1, self.num_boxes, 1)
 
-        # Create a multiplier tensor
-        multiplier = torch.ones_like(tensor) * np.pi/4
-        multiplier[:, :, 0] *= 2  # Multiply the first column by 2
+        # Apply the required transformations to the detection_output
+        # Scale the first two columns to be in the range [-1, 1]
+        detection_output[:, :, :2] = torch.tanh(detection_output[:, :, :2])
+        # Scale the third and fourth columns to be in the range [0, 1]
+        detection_output[:, :, 2:4] = torch.sigmoid(detection_output[:, :, 2:4])
+        # Set the last column to be 0
+        detection_output[:, :, 4] = 0.0
 
-        # Element-wise multiplication
-        detection = tensor * multiplier
-
-        classification = self.cls_head(x).view(-1, self.num_boxes, self.num_classes)
-        confidence = torch.sigmoid(self.conf_head(x)).view(-1, self.num_boxes, 1)
-        return detection, classification, confidence
+        return detection_output, classification_output, confidence_output
 
 #original res
 class SimpleObjectDetector(nn.Module):
@@ -147,15 +148,16 @@ class SimpleObjectDetector(nn.Module):
         x = self.dropout1(F.relu(self.fc1(x)))
         x = self.dropout1(F.relu(self.fc2(x)))
 
-        tensor = torch.sigmoid(self.det_head(x).view(-1, self.num_boxes, 5))
+        detection_output = self.det_head(x).view(-1, self.num_boxes, 5)
+        classification_output = self.cls_head(x).view(-1, self.num_boxes, self.num_classes)
+        confidence_output = torch.sigmoid(self.conf_head(x)).view(-1, self.num_boxes, 1)
 
-        # Create a multiplier tensor
-        multiplier = torch.ones_like(tensor) * np.pi
-        multiplier[:, :, 0] *= 2  # Multiply the first column by 2
+        # Apply the required transformations to the detection_output
+        # Scale the first two columns to be in the range [-1, 1]
+        detection_output[:, :, :2] = torch.tanh(detection_output[:, :, :2])
+        # Scale the third and fourth columns to be in the range [0, 1]
+        detection_output[:, :, 2:4] = torch.sigmoid(detection_output[:, :, 2:4])
+        # Set the last column to be 0
+        detection_output[:, :, 4] = 0.0
 
-        # Element-wise multiplication
-        detection = tensor * multiplier
-        classification = self.cls_head(x).view(-1, self.num_boxes, self.num_classes)
-        confidence = torch.sigmoid(self.conf_head(x)).view(-1, self.num_boxes, 1)
-
-        return detection, classification, confidence
+        return detection_output, classification_output, confidence_output

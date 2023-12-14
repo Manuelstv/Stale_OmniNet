@@ -87,7 +87,7 @@ class SimpleObjectDetectorWithBackbone(nn.Module):
 
 #original res
 class SimpleObjectDetector(nn.Module):
-    def __init__(self, num_boxes=50, num_classes=38):
+    def __init__(self, num_boxes=5, num_classes=38):
         super(SimpleObjectDetector, self).__init__()
         self.num_boxes = num_boxes
         self.num_classes = num_classes

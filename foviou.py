@@ -28,7 +28,7 @@ def fov_iou(Bg, Bd):
     # Passo 5: Calcular o FoV-IoU
     FoV_IoU = A_I / A_U
 
-    return FoV_IoU
+    return max(FoV_IoU,0)
 
 
 # Exemplo de uso

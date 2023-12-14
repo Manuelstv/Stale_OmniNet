@@ -110,8 +110,8 @@ class PascalVOCDataset(Dataset):
                 bbox = obj.find('bndbox')
 
                 # Normalize pixel coordinates of center to [-1, 1]
-                x_center = int(bbox.find('x_center').text)*(new_w/w)/(600/2)-1
-                y_center = int(bbox.find('y_center').text)*(new_h/h)/(300/2)-1 
+                x_center = int(bbox.find('x_center').text)*(new_w/w)/(600)
+                y_center = int(bbox.find('y_center').text)*(new_h/h)/(300) 
                 width = (float(bbox.find('width').text))/90
                 height = (int(bbox.find('height').text))/90
 

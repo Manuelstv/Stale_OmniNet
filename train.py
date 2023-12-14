@@ -32,22 +32,30 @@ def fov_iou_batch(gt_boxes, pred_boxes):
 
 def hungarian_matching(gt_boxes_in, pred_boxes_in):
     # Compute the batch IoUs
-
     pred_boxes = pred_boxes_in.clone()
     gt_boxes = gt_boxes_in.clone()
+
+    #print(pred_boxes, gt_boxes)
 
     gt_boxes[:, 0] = gt_boxes_in[:, 0]*360 / 2
     gt_boxes[:, 1] = gt_boxes_in[:, 1]*180 / 2
     gt_boxes[:, 2] = gt_boxes_in[:, 2]*90
     gt_boxes[:, 3] = gt_boxes_in[:, 3]*90
 
+    gt_boxes = gt_boxes.to(torch.int)
+
     pred_boxes[:, 0] = pred_boxes_in[:, 0]*360 / 2
-    pred_boxes[:, 1] = pred_boxes_in[:, 1]* 180 / 2
+    pred_boxes[:, 1] = pred_boxes_in[:, 1]*180 / 2
     pred_boxes[:, 2] = pred_boxes_in[:, 2]*90
     pred_boxes[:, 3] = pred_boxes_in[:, 3]*90
 
+    pred_boxes = pred_boxes.to(torch.int)
+
+    #prediciton returning weird values
     #print(gt_boxes)
     iou_matrix = fov_iou_batch(gt_boxes, pred_boxes)
+
+    print(iou_matrix)
 
     # Convert IoUs to cost
     cost_matrix = 1 - iou_matrix.detach().numpy()
@@ -84,7 +92,7 @@ def init_weights(m):
             init.zeros_(m.bias)
 
 
-model = SimpleObjectDetector(num_boxes=5, num_classes=num_classes).to(device)
+model = SimpleObjectDetector(num_boxes=3, num_classes=num_classes).to(device)
 #model.fc1.apply(init_weights)
 #model.det_head.apply(init_weights)
 #model.cls_head.apply(init_weights)
@@ -144,7 +152,7 @@ for epoch in range(num_epochs):
             det_preds = det_preds.to(device)          
             labels = labels.to(device)
 
-            matches, matched_iou_scores = hungarian_matching(boxes, det_preds)
+            matches, matched_iou_scores = hungarian_matching(boxes[:5], boxes[5:10])
             regression_loss = (1 - matched_iou_scores).mean()
 
             total_regression_loss += regression_loss

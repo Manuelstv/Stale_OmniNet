@@ -29,16 +29,67 @@ def fov_iou(Bg, Bd):
     FoV_IoU = A_I / A_U
 
     FoV_IoU = max(FoV_IoU,0)
-    FoV_IoU = min(FoV_IoU,1)
 
+    if FoV_IoU>=1:
+        FoV_IoU=0
+        #pass
+    
     return FoV_IoU
 
 
-# Exemplo de uso
-b1 = deg_to_rad([40, 50, 35, 55,0])  # Bg
-b2 = deg_to_rad([55, 40, 60, 60,0])  # Bd
 
-#b3 = deg_to_rad([-76,  -2,   4,   8,   0])
+b1 = [0, 12, 28, 24,  0]
+b2 = [0, 12, 28, 24,  0]
+
+theta_origin_deg = 0
+phi_origin_deg = 0
+
+# Define the ranges for each coordinate component
+theta_range_deg = (-180, 180)
+phi_range_deg = (-90, 90)
+fov_theta_range_deg = (0, 90)
+fov_phi_range_deg = (0, 90)
+
+# Function to wrap a value within a specified range
+def wrap_within_range(value, value_range):
+    lower, upper = value_range
+    while value < lower:
+        value += (upper - lower)
+    while value > upper:
+        value -= (upper - lower)
+    return value
+
+# Function to translate spherical coordinates
+def translate_coordinates(coordinates, origin_deg):
+    translated_coordinates_deg = []
+    for coord in coordinates:
+        theta_deg = wrap_within_range(coord[0] - origin_deg[0], theta_range_deg)
+        phi_deg = wrap_within_range(coord[1] - origin_deg[1], phi_range_deg)
+        fov_theta_deg = wrap_within_range(coord[2], fov_theta_range_deg)
+        fov_phi_deg = wrap_within_range(coord[3], fov_phi_range_deg)
+        translated_coordinates_deg.append([theta_deg, phi_deg, fov_theta_deg, fov_phi_deg,0])
+    return translated_coordinates_deg
+
+# Translate b1 and b2 coordinates
+translated_b1 = translate_coordinates([b1], [theta_origin_deg, phi_origin_deg])[0]
+translated_b2 = translate_coordinates([b2], [theta_origin_deg, phi_origin_deg])[0]
+
+print(translated_b1)
+print(translated_b2)
+
+#b1 = [-78.0, -80.0, 45.0, 30.0,0]
+#b2 = [-111.0, -18.0, 5.0, 51,0]
+
+#b1 = [-159.0, 9.0, 45.0, 30.0,0]
+#b2 = [169.0, 72.0, 65.0, 51.0,0]
+# Exemplo de uso
+
+#translated_b2 = [147, 62,65,51,0]
+b1 = deg_to_rad(translated_b1)  # Bg
+b2 = deg_to_rad(translated_b2)  # Bd
+
+#b1 = [-0.4014257279586958*180, -0.4188790204786391*90, 0.13962634015954636*90, 0.6283185307179586*90, 0.0]
+#b2 = [1.4660765716752369, 0.9948376736367679, 0.8377580409572782, 1.2217304763960306, 0.0]
 
 fov_iou_result = fov_iou(b1, b2)
 print(fov_iou_result)

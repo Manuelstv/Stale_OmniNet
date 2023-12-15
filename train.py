@@ -29,8 +29,9 @@ def fov_iou_batch(gt_boxes, pred_boxes):
         for j, Bd in enumerate(pred_boxes):
             ious[i, j] = fov_iou(deg_to_rad(Bg), deg_to_rad(Bd))
             if ious[i,j]>1:
-                #print(ious[i,j])
-                #print(Bg)
+                print(ious[i,j])
+                #print(Bg, Bd)
+                #break
                 pass
 
     return ious
@@ -72,9 +73,9 @@ def hungarian_matching(gt_boxes_in, pred_boxes_in):
     pred_boxes = [torch.tensor(b2, dtype=torch.int) for _, b2 in coordinates]'''
 
 
+    #print(gt_boxes, pred_boxes)
     #prediciton returning weird values
     iou_matrix = fov_iou_batch(gt_boxes, pred_boxes)
-    print(iou_matrix)
 
     # Convert IoUs to cost
     cost_matrix = 1 - iou_matrix.detach().numpy()
@@ -92,8 +93,8 @@ torch.cuda.empty_cache()
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # Hyperparameters
-num_epochs = 5000
-learning_rate = 0.001
+num_epochs = 500
+learning_rate = 0.0001
 batch_size = 8
 num_classes = 37
 max_images = 10
@@ -111,7 +112,7 @@ def init_weights(m):
             init.zeros_(m.bias)
 
 
-model = SimpleObjectDetectorWithBackbone(num_boxes=5, num_classes=num_classes).to(device)
+model = SimpleObjectDetector(num_boxes=30, num_classes=num_classes).to(device)
 model.fc1.apply(init_weights)
 model.det_head.apply(init_weights)
 #model.cls_head.apply(init_weights)
@@ -121,9 +122,6 @@ optimizer = optim.Adam(model.parameters(), lr=learning_rate)
 
 '''
 conversão:
-
-
-
 Para o primeiro conjunto 
 
 [40,50,35,55]:
@@ -148,36 +146,50 @@ for epoch in range(num_epochs):
         for boxes, labels, det_preds, cls_preds, conf_preds in zip(boxes_list, labels_list, detection_preds, classification_preds, confidence_preds):
 
 
-            boxes = torch.tensor([[-0.3740,  0.0854,  0.4000,  0.4889,  0.0000],
-                                [ 0.6417,  0.5042,  0.8000,  0.6667,  0.0000],
-                                [ 0.4333,  0.2417,  0.0444,  0.0444,  0.0000],
-                                [ 0.7198,  0.2188,  0.0889,  0.0889,  0.0000],
-                                [-0.5896,  0.1021,  0.4444,  0.2667,  0.0000],
-                                [ 0.4156,  0.1333,  0.0889,  0.1333,  0.0000],
-                                [ 0.7250,  0.1021,  0.0889,  0.1333,  0.0000],
-                                [-0.3719, -0.1021,  0.3111,  0.1333,  0.0000],
-                                [-0.8802,  0.1208,  0.1778,  0.4444,  0.0000]])
-
+            boxes = torch.tensor([[-0.0246,  0.0070,  0.4983,  0.5012,  0.0000],
+                        [ 0.0059,  0.0295,  0.4942,  0.5054,  0.0000],
+                        [ 0.0233,  0.0342,  0.4982,  0.5016,  0.0000],
+                        [-0.0490,  0.0103,  0.5090,  0.4972,  0.0000],
+                        [ 0.0585,  0.0395,  0.4941,  0.5064,  0.0000],
+                        [-0.0402, -0.0128,  0.5089,  0.5137,  0.0000],
+                        [ 0.0286,  0.0039,  0.4867,  0.4976,  0.0000],
+                        [ 0.0484, -0.0290,  0.5117,  0.5019,  0.0000],
+                        [ 0.0265,  0.0019,  0.5127,  0.4982,  0.0000],
+                        [ 0.0426, -0.0630,  0.4873,  0.5001,  0.0000],
+                        [ 0.0398, -0.0331,  0.4955,  0.4983,  0.0000],
+                        [-0.0189,  0.0334,  0.4973,  0.4879,  0.0000],
+                        [-0.0469,  0.0487,  0.4865,  0.5119,  0.0000],
+                        [ 0.0462, -0.0444,  0.4981,  0.5106,  0.0000],
+                        [-0.0007,  0.0522,  0.4935,  0.5072,  0.0000],
+                        [ 0.0268, -0.0203,  0.5037,  0.5020,  0.0000],
+                        [-0.0356,  0.0612,  0.4987,  0.5000,  0.0000],
+                        [ 0.0457,  0.0208,  0.4936,  0.4997,  0.0000],
+                        [ 0.0657, -0.0451,  0.4941,  0.5072,  0.0000],
+                        [ 0.0484, -0.0519,  0.5105,  0.5066,  0.0000],
+                        [ 0.0457,  0.0456,  0.4852,  0.4825,  0.0000],
+                        [ 0.0108, -0.0567,  0.5030,  0.5091,  0.0000],
+                        [-0.0509,  0.0018,  0.5011,  0.4958,  0.0000]])
+            
             boxes = boxes.to(device)
             det_preds = det_preds.to(device)          
             labels = labels.to(device)
-
             matches, matched_iou_scores = hungarian_matching(boxes, det_preds)
 
-            print(matched_iou_scores)
+            #sum or mean??????????
+            #print(matched_iou_scores)
             regression_loss = (1 - matched_iou_scores).mean()
 
             total_regression_loss = total_regression_loss + regression_loss
             total_matches += len(matches)
             
-            if epoch>0 and epoch%100==0:
+            if epoch>0 and epoch%10==0:
             #if True:
-                #pass
-                img1 = images[n].permute(1,2,0).cpu().numpy()*255
-                img = process_and_save_image(img1, boxes.cpu().detach().numpy(), (0,255,0), f'/home/mstveras/images/img.png')
-                img = process_and_save_image(img, det_preds.cpu().detach().numpy(), (255,0,0), f'/home/mstveras/images/img2.png')
+                pass
+                #img1 = images[n].permute(1,2,0).cpu().numpy()*255
+                #img = process_and_save_image(img1, boxes.cpu().detach().numpy(), (0,255,0), f'/home/mstveras/images/img.png')
+                #img = process_and_save_image(img, det_preds.cpu().detach().numpy(), (255,0,0), f'/home/mstveras/images/img2.png')
             
-                n+=1
+                #n+=1
 
         if total_matches > 0:
             avg_regression_loss = total_regression_loss / total_matches

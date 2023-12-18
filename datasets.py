@@ -110,12 +110,12 @@ class PascalVOCDataset(Dataset):
                 bbox = obj.find('bndbox')
 
                 # Normalize pixel coordinates of center to [-1, 1]
-                x_center = int(bbox.find('x_center').text)*(new_w/w)/(600/2)-1
-                y_center = int(bbox.find('y_center').text)*(new_h/h)/(300/2)-1
+                x_center = int(bbox.find('x_center').text)*(2/w)-1
+                y_center = int(bbox.find('y_center').text)*(2/h)-1
                 width = (float(bbox.find('width').text))/90
                 height = (int(bbox.find('height').text))/90
 
-                boxes.append([x_center, y_center, width, height, 0])
+                boxes.append([x_center, y_center, width, height])
                 labels.append(label_mapping[obj.find('name').text])
                 confidences.append(1)
 
@@ -125,7 +125,7 @@ class PascalVOCDataset(Dataset):
         
         #CHECAR ESSA PARTE!!!!!!
         
-        image, labels, difficulties = transform(image, labels, difficulties, split=self.split, new_w = 600, new_h = 300) 
+        image, labels, difficulties = transform(image, labels, difficulties, split=self.split, new_w = new_w, new_h = new_h) 
 
 
         return image, boxes, labels, confidences

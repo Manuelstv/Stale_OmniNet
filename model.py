@@ -39,7 +39,7 @@ class SimpleObjectDetectorWithBackbone2(nn.Module):
         # Apply tanh to the center_x and center_y and rescale to (-1, 1)
         detection[:, :, 0:2] = torch.tanh(detection_raw[:, :, 0:2])
 
-        detection = detection.view(-1, self.num_boxes, 5)
+        detection = detection.view(-1, self.num_boxes, 4)
         
         classification = self.cls_head(x).view(-1, self.num_boxes, self.num_classes)
         confidence = torch.sigmoid(self.conf_head(x)).view(-1, self.num_boxes, 1)
@@ -56,13 +56,13 @@ class SimpleObjectDetectorWithBackbone(nn.Module):
         self.backbone = mobilenet.features
 
         # Adjust this based on the output size of your backbone
-        fc_1_features = 243200  # Adjust for the output size of MobileNet
+        fc_1_features = 64000  # Adjust for the output size of MobileNet
         #fc_2_features = 2304
 
         # Fully connected layers
         self.fc1 = nn.Linear(fc_1_features, 256)
         #self.fc2 = nn.Linear(fc_2_features, 256)
-        self.det_head = nn.Linear(256, num_boxes * 5)  # Detection head
+        self.det_head = nn.Linear(256, num_boxes * 4)  # Detection head
         self.cls_head = nn.Linear(256, num_boxes * num_classes)  # Classification head
         self.conf_head = nn.Linear(256, num_boxes)  # Confidence head
 
@@ -72,7 +72,7 @@ class SimpleObjectDetectorWithBackbone(nn.Module):
         x = F.relu(self.fc1(x))
         #x = F.relu(self.fc2(x))
 
-        detection_output = self.det_head(x).view(-1, self.num_boxes, 5)
+        detection_output = self.det_head(x).view(-1, self.num_boxes, 4)
         classification_output = self.cls_head(x).view(-1, self.num_boxes, self.num_classes)
         confidence_output = torch.sigmoid(self.conf_head(x)).view(-1, self.num_boxes, 1)
 
@@ -82,7 +82,7 @@ class SimpleObjectDetectorWithBackbone(nn.Module):
         # Scale the third and fourth columns to be in the range [0, 1]
         detection_output[:, :, 2:4] = torch.sigmoid(detection_output[:, :, 2:4])
         # Set the last column to be 0
-        detection_output[:, :, 4] = 0.0
+        #detection_output[:, :, 4] = 0.0
 
         return detection_output, classification_output, confidence_output
 
@@ -106,9 +106,9 @@ class SimpleObjectDetector(nn.Module):
         #self.bn4 = nn.BatchNorm2d(64)
         self.conv5 = nn.Conv2d(64, 128, kernel_size=3, stride=1, padding=1)
         #self.bn5 = nn.BatchNorm2d(128)
-        #self.conv6 = nn.Conv2d(128, 256, kernel_size=3, stride=1, padding=1)
+        self.conv6 = nn.Conv2d(128, 256, kernel_size=3, stride=1, padding=1)
         #self.bn6 = nn.BatchNorm2d(256)
-        #self.conv7 = nn.Conv2d(256, 512, kernel_size=3, stride=1, padding=1)
+        self.conv7 = nn.Conv2d(256, 512, kernel_size=3, stride=1, padding=1)
         #self.bn7 = nn.BatchNorm2d(512)
 
 
@@ -118,18 +118,18 @@ class SimpleObjectDetector(nn.Module):
         # Calculate the flattened size after convolution and pooling layers
         # Assuming the input image size is 1920x960
         # The size after conv and pool layers would still be [32, 120, 60]
-        fc_1_features = 4608
-        fc_2_features = 2304
+        fc_1_features = 1024
+        fc_2_features = 512
 
-        self.dropout1 = nn.Dropout(0.2)
-        self.dropout2 = nn.Dropout(0.2)
+        #self.dropout1 = nn.Dropout(0.2)
+        #self.dropout2 = nn.Dropout(0.2)
 
         # Fully connected layers
         self.fc1 = nn.Linear(fc_1_features, fc_2_features)
         self.fc2 = nn.Linear(fc_2_features, 256)
-        self.det_head = nn.Linear(256, num_boxes * 5)  # Detection head
-        self.cls_head = nn.Linear(256, num_boxes * num_classes)  # Classification head
-        self.conf_head = nn.Linear(256, num_boxes)  # Confidence head
+        self.det_head = nn.Linear(256, num_boxes * 4)  # Detection head
+        #self.cls_head = nn.Linear(256, num_boxes * num_classes)  # Classification head
+        #self.conf_head = nn.Linear(256, num_boxes)  # Confidence head
 
     def forward(self, x):
         x = F.relu(self.conv1(x))
@@ -137,20 +137,20 @@ class SimpleObjectDetector(nn.Module):
         x = self.pool(F.relu(self.conv3(x)))
         x = self.pool(F.relu(self.conv4(x)))
         x = self.pool(F.relu(self.conv5(x)))
-        #x = F.relu(self.bn6(self.conv6(x)))
-        #x = F.relu(self.bn7(self.conv7(x)))
+        x = self.pool(F.relu(self.conv6(x)))
+        x = self.pool(F.relu(self.conv7(x)))
         #x = self.pool(x)
 
         # Flatten the features for the fully connected layer
         x = x.view(x.size(0), -1)
-        #print(x.size())
-        #print(x.size())
-        x = self.dropout1(F.relu(self.fc1(x)))
-        x = self.dropout1(F.relu(self.fc2(x)))
+        print(x.size())
 
-        detection_output = self.det_head(x).view(-1, self.num_boxes, 5)
-        classification_output = self.cls_head(x).view(-1, self.num_boxes, self.num_classes)
-        confidence_output = torch.sigmoid(self.conf_head(x)).view(-1, self.num_boxes, 1)
+        x = F.relu(self.fc1(x))
+        x = F.relu(self.fc2(x))
+
+        detection_output = self.det_head(x).view(-1, self.num_boxes, 4)
+        #classification_output = self.cls_head(x).view(-1, self.num_boxes, self.num_classes)
+        #confidence_output = torch.sigmoid(self.conf_head(x)).view(-1, self.num_boxes, 1)
 
         # Apply the required transformations to the detection_output
         # Scale the first two columns to be in the range [-1, 1]
@@ -158,6 +158,6 @@ class SimpleObjectDetector(nn.Module):
         # Scale the third and fourth columns to be in the range [0, 1]
         detection_output[:, :, 2:4] = torch.sigmoid(detection_output[:, :, 2:4])
         # Set the last column to be 0
-        detection_output[:, :, 4] = 0.0
+        #detection_output[:, :, 4] = 0.0
 
-        return detection_output, classification_output, confidence_output
+        return detection_output

@@ -15,9 +15,9 @@ torch.cuda.empty_cache()
 
 import cv2
 import json
-from calculate_RoIoU import Sph
+from sphiou import Sph
 from plot_tools import process_and_save_image
-from foviou import fov_iou, deg_to_rad, angle2radian, fov_giou_loss
+from foviou import fov_iou, deg2rad, angle2radian, fov_giou_loss
 from sph2pob import sph_iou_aligned, fov_iou_aligned
 import math
 
@@ -28,7 +28,7 @@ def fov_iou_batch(gt_boxes, pred_boxes):
     # Iterate over each ground truth and predicted box pair
     for i, Bg in enumerate(gt_boxes):
         for j, Bd in enumerate(pred_boxes):
-            ious[i, j] = fov_iou_aligned(Bg.unsqueeze(0), Bd.unsqueeze(0))
+            ious[i, j] = sph_iou_aligned(Bg.unsqueeze(0), Bd.unsqueeze(0))
             if ious[i,j]>1:
                 #print(ious[i,j])
                 #print(Bg, Bd)
@@ -95,7 +95,7 @@ num_epochs = 500
 learning_rate = 0.0001
 batch_size = 10
 num_classes = 37
-max_images = 10
+max_images = 100
 
 
 # Initialize dataset and dataloader
@@ -110,7 +110,7 @@ def init_weights(m):
             init.zeros_(m.bias)
 
 
-model = SimpleObjectDetector(num_boxes=100, num_classes=num_classes).to(device)
+model = SimpleObjectDetector(num_boxes=20, num_classes=num_classes).to(device)
 model.fc1.apply(init_weights)
 model.det_head.apply(init_weights)
 #model.cls_head.apply(init_weights)
@@ -158,6 +158,7 @@ for epoch in range(num_epochs):
             avg_regression_loss = total_regression_loss / total_matches
         else:
             avg_regression_loss = total_regression_loss*0
+            print('not matched')
 
         # Backward pass and optimize
         avg_regression_loss.backward()

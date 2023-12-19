@@ -15,8 +15,8 @@ class PascalVOCDataset(Dataset):
         #self.data_folder = data_folder
         self.keep_difficult = keep_difficult
         #self.split_dir = os.path.join(data_folder, self.split.lower())
-        self.image_dir = '/home/mstveras/ssd-360/dataset/train/images'
-        self.annotation_dir = '/home/mstveras/ssd-360/dataset/train/labels_all'
+        self.image_dir = '/home/mstveras/newdet/train_data/train/images'
+        self.annotation_dir = '/home/mstveras/newdet/train_data/train/labels'
         
         # Load all image files, sorting them to ensure that they are aligned
         self.image_filenames = [os.path.join(self.image_dir, f) for f in sorted(os.listdir(self.image_dir)) if f.endswith('.jpg')][:max_images]
@@ -113,7 +113,7 @@ class PascalVOCDataset(Dataset):
                 x_center = int(bbox.find('x_center').text)*(2/w)-1
                 y_center = int(bbox.find('y_center').text)*(2/h)-1
                 width = (float(bbox.find('width').text))/90
-                height = (int(bbox.find('height').text))/90
+                height = (float(bbox.find('height').text))/90
 
                 boxes.append([x_center, y_center, width, height])
                 labels.append(label_mapping[obj.find('name').text])
@@ -122,8 +122,6 @@ class PascalVOCDataset(Dataset):
         boxes = torch.FloatTensor(boxes)
         labels = torch.LongTensor(labels)
         confidences = torch.FloatTensor(confidences).unsqueeze(1)  # Convert to tensor
-        
-        #CHECAR ESSA PARTE!!!!!!
         
         image, labels, difficulties = transform(image, labels, difficulties, split=self.split, new_w = new_w, new_h = new_h) 
 

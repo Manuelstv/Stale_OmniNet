@@ -39,7 +39,7 @@ def angle2radian(angle_sph_box, mode='convention'):
     return radian_sph_box
 
 # Função para converter graus em radianos
-def deg_to_rad(degrees):
+def deg2rad(degrees):
     return [math.radians(degree) for degree in degrees]
 
 def fov_iou(Bg, Bd):
@@ -76,7 +76,6 @@ def fov_iou(Bg, Bd):
 
 def fov_giou_loss(Bg, Bd):
     # Bg and Bd are the ground truth and detected bounding boxes
-    # Bg = (θg, φg, αg, βg), Bd = (θd, φd, αd, βd)
     theta_g, phi_g, alpha_g, beta_g = Bg  # Unpacking ground truth bounding box values
     theta_d, phi_d, alpha_d, beta_d = Bd  # Unpacking detected bounding box values
     
@@ -144,8 +143,8 @@ b2 = [60, 55, 40, 50, 0]
 b1 = [40, 70, 25, 30]
 b2 = [60, 85, 30, 30]
 
-#b1 = [30, 75, 30, 60]
-#b2 = [60, 40, 60, 60]
+b1 = [30, 75, 30, 60]
+b2 = [60, 40, 60, 60]
 
 theta_origin_deg = 0
 phi_origin_deg = 0
@@ -180,10 +179,12 @@ def translate_coordinates(coordinates, origin_deg):
 translated_b1 = translate_coordinates([b1], [theta_origin_deg, phi_origin_deg])[0]
 translated_b2 = translate_coordinates([b2], [theta_origin_deg, phi_origin_deg])[0]
 
-b1 = angle2radian(translated_b1)
-b2 = angle2radian(translated_b2)
+b1 = deg2rad(translated_b1)
+b2 = deg2rad(translated_b2)
 
-print(b1)
+
+##b1 = angle2radian(translated_b1)
+#b2 = angle2radian(translated_b2)
 
 fov_iou_result = fov_iou(b1, b2)
 print(fov_iou_result)

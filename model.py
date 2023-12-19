@@ -143,7 +143,6 @@ class SimpleObjectDetector(nn.Module):
 
         # Flatten the features for the fully connected layer
         x = x.view(x.size(0), -1)
-        print(x.size())
 
         x = F.relu(self.fc1(x))
         x = F.relu(self.fc2(x))
@@ -157,7 +156,5 @@ class SimpleObjectDetector(nn.Module):
         detection_output[:, :, :2] = torch.tanh(detection_output[:, :, :2])
         # Scale the third and fourth columns to be in the range [0, 1]
         detection_output[:, :, 2:4] = torch.sigmoid(detection_output[:, :, 2:4])
-        # Set the last column to be 0
-        #detection_output[:, :, 4] = 0.0
 
         return detection_output

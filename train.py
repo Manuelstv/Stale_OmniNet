@@ -3,13 +3,12 @@ import torch.optim as optim
 import torch.nn as nn
 import numpy as np
 from torch.utils.data import DataLoader
-#sfrom torchvision import transforms
 import torch.nn.functional as F
 from scipy.optimize import linear_sum_assignment
 from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss
 import torch.nn.init as init
 
-from model import SimpleObjectDetectorWithBackbone, SimpleObjectDetector, SimpleObjectDetectorWithBackbone2
+from model import SimpleObjectDetector, SimpleObjectDetectorMobile, SimpleObjectDetectorResnet
 from datasets import PascalVOCDataset
 torch.cuda.empty_cache()
 
@@ -29,12 +28,6 @@ def fov_iou_batch(gt_boxes, pred_boxes):
     for i, Bg in enumerate(gt_boxes):
         for j, Bd in enumerate(pred_boxes):
             ious[i, j] = sph_iou_aligned(Bg.unsqueeze(0), Bd.unsqueeze(0))
-            if ious[i,j]>1:
-                #print(ious[i,j])
-                #print(Bg, Bd)
-                #break
-                pass
-
     return ious
 
 def deg_to_rad(degrees):
@@ -58,20 +51,6 @@ def hungarian_matching(gt_boxes_in, pred_boxes_in):
     pred_boxes[:, 3] = pred_boxes_in[:, 3]*90
 
     pred_boxes = pred_boxes.to(torch.int)
-
-    '''
-    coordinates = [
-    ([40, 50, 35, 55,0], [35, 20, 37, 50,0]),
-    ([30, 60, 60, 60,0], [55, 40, 60, 60,0]),
-    ([50, -78, 25, 46,0], [30, -75, 26, 45,0]),
-    ([30, 75, 30, 60,0], [60, 40, 60, 60,0]),
-    ([40, 70, 25, 30,0], [60, 85, 30, 30,0]),
-    ([30, 75, 30, 30,0], [60, 55, 40, 50,0])
-]
-
-    # Convert the coordinates to tensors
-    gt_boxes = [torch.tensor(b1, dtype=torch.int) for b1, _ in coordinates]
-    pred_boxes = [torch.tensor(b2, dtype=torch.int) for _, b2 in coordinates]'''
 
     iou_matrix = fov_iou_batch(gt_boxes, pred_boxes)
 
@@ -113,8 +92,6 @@ def init_weights(m):
 model = SimpleObjectDetector(num_boxes=20, num_classes=num_classes).to(device)
 model.fc1.apply(init_weights)
 model.det_head.apply(init_weights)
-#model.cls_head.apply(init_weights)
-#model.conf_head.apply(init_weights)
 
 optimizer = optim.Adam(model.parameters(), lr=learning_rate)
 
@@ -128,11 +105,9 @@ for epoch in range(num_epochs):
         images = images.to(device)
         optimizer.zero_grad()
         detection_preds = model(images)
-        n=0
+        n = 0
 
         for boxes, labels, det_preds in zip(boxes_list, labels_list, detection_preds):
-
-            #boxes = torch.tensor([[-0.0246,  0.0070,  0.4983,  0.5012,  0.0000],])
             
             boxes = boxes.to(device)
             det_preds = det_preds.to(device)          
@@ -145,6 +120,7 @@ for epoch in range(num_epochs):
             total_regression_loss = total_regression_loss + regression_loss
             total_matches += len(matches)
             
+            #salvando images de 10 em 10 épocas
             if epoch>0 and epoch%10==0:
             #if True:
                 #pass

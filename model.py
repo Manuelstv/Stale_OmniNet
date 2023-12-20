@@ -5,9 +5,9 @@ import torchvision.models as models
 import numpy as np
 
 
-class SimpleObjectDetectorWithBackbone2(nn.Module):
+class SimpleObjectDetectorResnet(nn.Module):
     def __init__(self, num_boxes=50, num_classes=38, pretrained=True):
-        super(SimpleObjectDetectorWithBackbone, self).__init__()
+        super(SimpleObjectDetectorResnet, self).__init__()
         self.num_boxes = num_boxes
         self.num_classes = num_classes
 
@@ -45,9 +45,9 @@ class SimpleObjectDetectorWithBackbone2(nn.Module):
         confidence = torch.sigmoid(self.conf_head(x)).view(-1, self.num_boxes, 1)
         return detection, classification, confidence
 
-class SimpleObjectDetectorWithBackbone(nn.Module):
+class SimpleObjectDetectorMobile(nn.Module):
     def __init__(self, num_boxes=50, num_classes=38, pretrained=True):
-        super(SimpleObjectDetectorWithBackbone, self).__init__()
+        super(SimpleObjectDetectorMobile, self).__init__()
         self.num_boxes = num_boxes
         self.num_classes = num_classes
 

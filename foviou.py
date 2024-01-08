@@ -1,5 +1,7 @@
 import math
 import torch
+from pdb import set_trace as pause
+
 
 
 def angle2radian(angle_sph_box, mode='convention'):
@@ -102,27 +104,6 @@ def fov_giou_loss(Bg, Bd):
     
     return FoV_GIoU
 
-b1 = [30, 75, 30, 30]
-b2 = [60, 55, 40, 50, 0]
-
-#Wb1 = [-158.0, 10.0, 45.0, 30.0]
-#b2 = [169.0, 72.0, 65.0, 51.0]
-
-b1 = [40, 70, 25, 30]
-b2 = [60, 85, 30, 30]
-
-b1 = [30, 75, 30, 60]
-b2 = [60, 40, 60, 60]
-
-theta_origin_deg = 0
-phi_origin_deg = 0
-
-# Define the ranges for each coordinate component
-theta_range_deg = (-180, 180)
-phi_range_deg = (-90, 90)
-fov_theta_range_deg = (0, 90)
-fov_phi_range_deg = (0, 90)
-
 # Function to wrap a value within a specified range
 def wrap_within_range(value, value_range):
     lower, upper = value_range
@@ -143,16 +124,80 @@ def translate_coordinates(coordinates, origin_deg):
         translated_coordinates_deg.append([theta_deg, phi_deg, fov_theta_deg, fov_phi_deg])
     return translated_coordinates_deg
 
+'''
+b1 = [30, 75, 30, 30]
+b2 = [60, 55, 40, 50, 0]
+
+
+b1 = [40, 70, 25, 30]
+b2 = [60, 85, 30, 30]
+
+b1 = [30, 75, 30, 60]
+b2 = [60, 40, 60, 60]
+
+theta_origin_deg = 0
+phi_origin_deg = 0
+
+# Define the ranges for each coordinate component
+theta_range_deg = (-180, 180)
+phi_range_deg = (-90, 90)
+fov_theta_range_deg = (0, 90)
+fov_phi_range_deg = (0, 90)
+
 # Translate b1 and b2 coordinates
 translated_b1 = translate_coordinates([b1], [theta_origin_deg, phi_origin_deg])[0]
 translated_b2 = translate_coordinates([b2], [theta_origin_deg, phi_origin_deg])[0]
+'''
 
-b1 = deg2rad(translated_b1)
-b2 = deg2rad(translated_b2)
+if __name__ == '__main__':
+# Test case from Table I
+    b1 = [30, 60, 60, 60]  # BFoV parameters for Bg
+    b2 = [60, 60, 60, 60]  # BFoV parameters for Bd
 
+    theta_origin_deg = 10
+    phi_origin_deg = 30
 
-##b1 = angle2radian(translated_b1)
-#b2 = angle2radian(translated_b2)
+    # Define the ranges for each coordinate component
+    theta_range_deg = (-180, 180)
+    phi_range_deg = (-90, 90)
+    fov_theta_range_deg = (0, 90)
+    fov_phi_range_deg = (0, 90)
 
-fov_iou_result = fov_iou(b1, b2)
-print(fov_iou_result)
+    # Translate b1 and b2 coordinates
+    b1 = translate_coordinates([b1], [theta_origin_deg, phi_origin_deg])[0]
+    b2 = translate_coordinates([b2], [theta_origin_deg, phi_origin_deg])[0]
+
+    b1_rad = deg2rad(b1)
+    b2_rad = deg2rad(b2)
+
+    fov_iou_result = fov_iou(b1_rad, b2_rad)
+    print(fov_iou_result)  # Prints FoV IoU for b1 and b2
+
+    # Additional test cases from Table II
+    # Table II.a
+    b1 = [40, 50, 35, 55]
+    b2 = [35, 20, 37, 50]
+    b1_rad = deg2rad(b1)
+    b2_rad = deg2rad(b2)
+    print(fov_iou(b1_rad, b2_rad))
+
+    # Table II.b
+    b1 = [30, 60, 60, 60]
+    b2 = [55, 40, 60, 60]
+    b1_rad = deg2rad(b1)
+    b2_rad = deg2rad(b2)
+    print(fov_iou(b1_rad, b2_rad))
+
+    # Table II.c
+    b1 = [50, -78, 25, 46]
+    b2 = [30, -75, 26, 45]
+    b1_rad = deg2rad(b1)
+    b2_rad = deg2rad(b2)
+    print(fov_iou(b1_rad, b2_rad))
+
+    # Table II.d
+    b1 = [30, 75, 30, 60]
+    b2 = [60, 40, 60, 60]
+    b1_rad = deg2rad(b1)
+    b2_rad = deg2rad(b2)
+    print(fov_iou(b1_rad, b2_rad))

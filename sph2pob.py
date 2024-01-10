@@ -1,4 +1,6 @@
 import torch
+from numpy import *
+
 
 def sph_iou_aligned(sph_gt, sph_pred):
     """Spherical criteria for fast and accurate 360 object detection.
@@ -6,8 +8,8 @@ def sph_iou_aligned(sph_gt, sph_pred):
     """
     eps = 1e-8
     sph_gt, sph_pred = standardize_spherical_box(sph_gt, sph_pred)
-    sph_gt = angle2radian(sph_gt, mode='convention')
-    sph_pred = angle2radian(sph_pred, mode='convention')
+    sph_gt = angle2rad(sph_gt)
+    sph_pred = angle2rad(sph_pred)
 
     theta_g, phi_g, alpha_g, beta_g = torch.chunk(sph_gt, chunks=4, dim=1)   # Nx1
     theta_p, phi_p, alpha_p, beta_p = torch.chunk(sph_pred, chunks=4, dim=1) # Nx1
@@ -33,8 +35,11 @@ def fov_iou_aligned(sph_gt, sph_pred):
     """
     eps = 1e-8
     sph_gt, sph_pred = standardize_spherical_box(sph_gt, sph_pred)
-    sph_gt = angle2radian(sph_gt, mode='convention')
-    sph_pred = angle2radian(sph_pred, mode='convention')
+    #sph_gt = angle2radian(sph_gt, mode='convention')
+    #sph_pred = angle2radian(sph_pred, mode='convention')
+
+    sph_gt = deg2rad(sph_gt)
+    sph_pred = deg2rad(sph_pred)
 
     theta_g, phi_g, alpha_g, beta_g = torch.chunk(sph_gt, chunks=4, dim=1)   # Nx1
     theta_p, phi_p, alpha_p, beta_p = torch.chunk(sph_pred, chunks=4, dim=1) # Nx1
@@ -99,34 +104,8 @@ def angle2radian(angle_sph_box, mode='convention'):
         radian_sph_box[:, 1] = torch.pi / 2 - radian_sph_box[:, 1]
     return radian_sph_box
 
+b1 = torch.tensor([40, 50, 35, 55]).unsqueeze(0)
+b2 = torch.tensor([35, 20, 37, 50]).unsqueeze(0)
 
-b1 = [30, 75, 30, 60]
-b2 = [60, 40, 60, 60]
-
-b1 = [40, 50, 35, 55]
-b2 = [35, 20, 37, 50]
-
-
-b1 = [30, 60, 60, 60]
-b2 = [55, 40, 60, 60]
-'''
-b1 = [50, -78, 25, 46]
-b2 = [30, -75, 26, 45]
-
-b1 = [30, 75, 30, 60]
-b2 = [60, 40, 60, 60]
-'''
-b1 = [40, 70, 25, 30]
-b2 = [60, 85, 30, 30]
-
-b1 = [30, 60, 60, 60]
-b2 = [55, 40, 60, 60]
-
-b1 = [30, 75, 30, 60]
-b2 = [60, 40, 60, 60]
-
-b1 = torch.tensor(b1).unsqueeze(0)
-b2 = torch.tensor(b2).unsqueeze(0)
-
-print(sph_iou_aligned(b1,b2))
+#print(sph_iou_aligned(b1,b2))
 print(fov_iou_aligned(b1,b2))

@@ -56,6 +56,13 @@ def FoVIoU(Bg, Bd):
     
     # Step 4 of Alg. 1
     ABi = Bi.alpha * Bi.beta
+
+    if iThetaMax > iThetaMin and iPhiMax > iPhiMin:
+        # Compute area of FoV intersection I
+        ABi = Bi.alpha * Bi.beta
+    else:
+        ABi = 0
+
     ABu = ABg + ABd - ABi
 
     # Step 5 of Alg. 1
@@ -87,35 +94,35 @@ if __name__ == '__main__':
    Bg = BFoV(30, 60, 60, 60)
    Bd = BFoV(60, 60, 60, 60)
    print(FoVIoU(Bg, Bd)) #0.6000
-   print(SphIoU(Bg, Bd)) #0.3546
+   #print(SphIoU(Bg, Bd)) #0.3546
    # Table II. [[a,b,c],[d,e,f]]
    # Table II.a. Should be 0.235/0.227
    B1 = BFoV(40, 50, 35, 55)
    B2 = BFoV(35, 20, 37, 50)
    print(FoVIoU(B1, B2)) #0.2348
-   print(SphIoU(B1, B2)) #0.2367
+   #print(SphIoU(B1, B2)) #0.2367
    # Table II.b. Should be 0.323/0.250
    B1 = BFoV(30, 60, 60, 60)
    B2 = BFoV(55, 40, 60, 60)
    print(FoVIoU(B1, B2)) #0.3228
-   print(SphIoU(B1, B2)) #0.2556
+   #print(SphIoU(B1, B2)) #0.2556
    # Table II.c. Should be 0.617/0.112
    B1 = BFoV(50, -78, 25, 46)
    B2 = BFoV(30, -75, 26, 45)
    print(FoVIoU(B1, B2)) #0.6170
-   print(SphIoU(B1, B2)) #0.1153
+   #print(SphIoU(B1, B2)) #0.1153
    # Table II.d. Should be 0.589/0.00
    B1 = BFoV(30, 75, 30, 60)
    B2 = BFoV(60, 40, 60, 60)
    print(FoVIoU(B1, B2)) #0.1543
-   print(SphIoU(B1, B2)) #0.0784
+   #print(SphIoU(B1, B2)) #0.0784
    # Table II.e. Should be 0.259/0.073
    B1 = BFoV(40, 70, 25, 30)
    B2 = BFoV(60, 85, 30, 30)
    print(FoVIoU(B1, B2)) #0.2668
-   print(SphIoU(B1, B2)) #0.0740
+   #print(SphIoU(B1, B2)) #0.0740
    # Table II.e. Should be 0.538/0.212
    B1 = BFoV(30, 75, 30, 30)
    B2 = BFoV(60, 55, 40, 50)
    print(FoVIoU(B1, B2)) #0.1819
-   print(SphIoU(B1, B2)) #0.0366
+   #print(SphIoU(B1, B2)) #0.0366

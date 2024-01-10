@@ -1,6 +1,7 @@
 import math
 import torch
 from pdb import set_trace as pause
+import numpy as np
 
 
 
@@ -31,8 +32,8 @@ def angle2radian(angle_sph_box, mode='convention'):
         if isinstance(radian_sph_box[0], list):
             # Process each box in the list of boxes
             for box in radian_sph_box:
-                box[0] = box[0] - math.pi
-                box[1] = math.pi / 2 - box[1]
+                box[0] = box[0] - math.pi #0, 2pi -> -pi, pi
+                box[1] = math.pi / 2 - box[1] # 0,pi -> -pi/2, pi/2 
         else:
             # Process the single list of angles
             radian_sph_box[0] = radian_sph_box[0] - math.pi
@@ -64,15 +65,23 @@ def fov_iou(Bg, Bd):
     phi_I_max = min(phi_g + beta_g / 2, phi_d + beta_d / 2)
 
     # Step 4: Calculate the Area of the FoV Intersection and Union
-    A_I = (theta_I_max - theta_I_min) * (phi_I_max - phi_I_min)
+    if theta_I_max > theta_I_min and phi_I_max > phi_I_min:
+        # Compute area of FoV intersection I
+        A_I = (theta_I_max - theta_I_min) * (phi_I_max - phi_I_min)
+    else:
+        # No valid intersection
+        A_I = 0
+
     A_U = A_Bg + A_Bd - A_I
 
     # Ensure that A_I and A_U are not negative
-    A_I = max(A_I, 0)
-    A_U = max(A_U, 0)
+    #A_U = max(A_U, 0)
 
     # Step 5: Calculate the FoV-IoU
     FoV_IoU = A_I / A_U if A_U != 0 else 0
+
+    if FoV_IoU>1:
+        print(Bg, Bd)
 
     return FoV_IoU
 
@@ -95,7 +104,7 @@ def fov_giou_loss(Bg, Bd):
     theta_c_max = torch.max(Bg[2]/2, Bd[2]/2 + delta_fov)
     phi_c_min = torch.min(-Bg[3]/2, -Bd[3]/2 - delta_fov)
     phi_c_max = torch.max(Bg[3]/2, Bd[3]/2 + delta_fov)
-    
+
     # Step 3: Compute area of smallest enclosing box C
     A_C = (theta_c_max - theta_c_min) * (phi_c_max - phi_c_min)
     
@@ -119,9 +128,9 @@ def translate_coordinates(coordinates, origin_deg):
     for coord in coordinates:
         theta_deg = wrap_within_range(coord[0] - origin_deg[0], theta_range_deg)
         phi_deg = wrap_within_range(coord[1] - origin_deg[1], phi_range_deg)
-        fov_theta_deg = wrap_within_range(coord[2], fov_theta_range_deg)
-        fov_phi_deg = wrap_within_range(coord[3], fov_phi_range_deg)
-        translated_coordinates_deg.append([theta_deg, phi_deg, fov_theta_deg, fov_phi_deg])
+        #fov_theta_deg = wrap_within_range(coord[2], fov_theta_range_deg)
+        #fov_phi_deg = wrap_within_range(coord[3], fov_phi_range_deg)
+        translated_coordinates_deg.append([theta_deg, phi_deg, coord[2], coord[3]])
     return translated_coordinates_deg
 
 '''
@@ -151,21 +160,25 @@ translated_b2 = translate_coordinates([b2], [theta_origin_deg, phi_origin_deg])[
 
 if __name__ == '__main__':
 # Test case from Table I
-    b1 = [30, 60, 60, 60]  # BFoV parameters for Bg
-    b2 = [60, 60, 60, 60]  # BFoV parameters for Bd
+    b1 = [0,   54,   24,   20]  # BFoV parameters for Bg
+    b2 = [150, -2, 45, 45]  # BFoV parameters for Bd
 
-    theta_origin_deg = 10
-    phi_origin_deg = 30
+    '''
+    theta_origin_deg = 0
+    phi_origin_deg = 0
 
     # Define the ranges for each coordinate component
     theta_range_deg = (-180, 180)
     phi_range_deg = (-90, 90)
-    fov_theta_range_deg = (0, 90)
-    fov_phi_range_deg = (0, 90)
 
     # Translate b1 and b2 coordinates
     b1 = translate_coordinates([b1], [theta_origin_deg, phi_origin_deg])[0]
     b2 = translate_coordinates([b2], [theta_origin_deg, phi_origin_deg])[0]
+
+    print(b1, b2)'''
+
+    #b1 = [30, 60, 60, 60]
+    #b2 = [60, 60, 60, 60]
 
     b1_rad = deg2rad(b1)
     b2_rad = deg2rad(b2)
@@ -177,27 +190,44 @@ if __name__ == '__main__':
     # Table II.a
     b1 = [40, 50, 35, 55]
     b2 = [35, 20, 37, 50]
-    b1_rad = deg2rad(b1)
-    b2_rad = deg2rad(b2)
+    b1_rad = angle2radian(b1)
+    b2_rad = angle2radian(b2)
+
     print(fov_iou(b1_rad, b2_rad))
 
     # Table II.b
     b1 = [30, 60, 60, 60]
     b2 = [55, 40, 60, 60]
-    b1_rad = deg2rad(b1)
-    b2_rad = deg2rad(b2)
+    b1_rad = angle2radian(b1)
+    b2_rad = angle2radian(b2)
+
+    b1_rad = angle2radian(b1)
+    b2_rad = angle2radian(b2)
+
     print(fov_iou(b1_rad, b2_rad))
 
     # Table II.c
     b1 = [50, -78, 25, 46]
     b2 = [30, -75, 26, 45]
-    b1_rad = deg2rad(b1)
-    b2_rad = deg2rad(b2)
+    b1_rad = angle2radian(b1)
+    b2_rad = angle2radian(b2)
     print(fov_iou(b1_rad, b2_rad))
 
     # Table II.d
     b1 = [30, 75, 30, 60]
     b2 = [60, 40, 60, 60]
-    b1_rad = deg2rad(b1)
-    b2_rad = deg2rad(b2)
+    b1_rad = angle2radian(b1)
+    b2_rad = angle2radian(b2)
+    print(fov_iou(b1_rad, b2_rad))
+
+    b1 = [40, 70, 25, 30]
+    b2 = [60, 85, 30, 30]
+    b1_rad = angle2radian(b1)
+    b2_rad = angle2radian(b2)
+    print(fov_iou(b1_rad, b2_rad))
+
+    b1 = [30, 75, 30, 30]
+    b2 = [60, 55, 40, 50]
+    b1_rad = angle2radian(b1)
+    b2_rad = angle2radian(b2)
     print(fov_iou(b1_rad, b2_rad))

@@ -27,7 +27,7 @@ def fov_iou_batch(gt_boxes, pred_boxes):
     # Iterate over each ground truth and predicted box pair
     for i, Bg in enumerate(gt_boxes):
         for j, Bd in enumerate(pred_boxes):
-            ious[i, j] = sph_iou_aligned(Bg.unsqueeze(0), Bd.unsqueeze(0))
+            ious[i, j] = fov_iou(deg2rad(Bg), deg2rad(Bd))
     return ious
 
 def deg_to_rad(degrees):
@@ -74,7 +74,7 @@ num_epochs = 500
 learning_rate = 0.0001
 batch_size = 10
 num_classes = 37
-max_images = 100
+max_images = 10
 
 
 # Initialize dataset and dataloader
@@ -89,7 +89,7 @@ def init_weights(m):
             init.zeros_(m.bias)
 
 
-model = SimpleObjectDetector(num_boxes=20, num_classes=num_classes).to(device)
+model = SimpleObjectDetector(num_boxes=200, num_classes=num_classes).to(device)
 model.fc1.apply(init_weights)
 model.det_head.apply(init_weights)
 
@@ -113,8 +113,6 @@ for epoch in range(num_epochs):
             det_preds = det_preds.to(device)          
             labels = labels.to(device)
             matches, matched_iou_scores = hungarian_matching(boxes, det_preds)
-
-            #print(matched_iou_scores)
             regression_loss = (1 - matched_iou_scores).mean()
 
             total_regression_loss = total_regression_loss + regression_loss

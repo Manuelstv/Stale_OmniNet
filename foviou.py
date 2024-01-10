@@ -45,6 +45,42 @@ def angle2radian(angle_sph_box, mode='convention'):
 def deg2rad(degrees):
     return [math.radians(degree) for degree in degrees]
 
+def iou(box1, box2):
+    """
+    Calculate the Intersection over Union (IoU) of two bounding boxes.
+
+    Parameters:
+    box1, box2: tuples of (xmin, ymin, xmax, ymax)
+    """
+    # Unpack the coordinates
+    xmin1, ymin1, xmax1, ymax1 = box1
+    xmin2, ymin2, xmax2, ymax2 = box2
+
+    # Calculate the (x, y)-coordinates of the intersection rectangle
+    x_left = max(xmin1, xmin2)
+    y_top = max(ymin1, ymin2)
+    x_right = min(xmax1, xmax2)
+    y_bottom = min(ymax1, ymax2)
+
+    # Check if there is no intersection
+    if x_right < x_left or y_bottom < y_top:
+        return 0.0
+
+    # Calculate intersection area
+    intersection_area = (x_right - x_left) * (y_bottom - y_top)
+
+    # Calculate the areas of both bounding boxes
+    box1_area = (xmax1 - xmin1) * (ymax1 - ymin1)
+    box2_area = (xmax2 - xmin2) * (ymax2 - ymin2)
+
+    # Calculate union area
+    union_area = box1_area + box2_area - intersection_area
+
+    # Calculate IoU
+    iou = intersection_area / union_area
+
+    return iou
+
 def fov_iou(Bg, Bd):
     import math
 

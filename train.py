@@ -30,9 +30,6 @@ def fov_iou_batch(gt_boxes, pred_boxes):
             ious[i, j] = fov_iou(deg2rad(Bg), deg2rad(Bd))
     return ious
 
-def deg_to_rad(degrees):
-    return [math.radians(degree) for degree in degrees]
-
 def hungarian_matching(gt_boxes_in, pred_boxes_in):
     # Compute the batch IoUs
     pred_boxes = pred_boxes_in.clone()
@@ -74,7 +71,7 @@ num_epochs = 500
 learning_rate = 0.0001
 batch_size = 10
 num_classes = 37
-max_images = 10
+max_images = 200
 
 
 # Initialize dataset and dataloader

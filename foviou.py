@@ -45,7 +45,7 @@ def angle2radian(angle_sph_box, mode='convention'):
 def deg2rad(degrees):
     return [math.radians(degree) for degree in degrees]
 
-def iou(box1, box2):
+def calculate_iou(box1, box2):
     """
     Calculate the Intersection over Union (IoU) of two bounding boxes.
 
@@ -75,6 +75,10 @@ def iou(box1, box2):
 
     # Calculate union area
     union_area = box1_area + box2_area - intersection_area
+
+    # Ensure union area is not zero (to avoid division by zero)
+    if union_area == 0:
+        return 0.0
 
     # Calculate IoU
     iou = intersection_area / union_area

@@ -16,7 +16,7 @@ import cv2
 import json
 from sphiou import Sph
 from plot_tools import process_and_save_image
-from foviou import fov_iou, deg2rad, angle2radian, fov_giou_loss
+from foviou import fov_iou, deg2rad, angle2radian, fov_giou_loss, iou
 from sph2pob import sph_iou_aligned, fov_iou_aligned
 import math
 
@@ -27,7 +27,8 @@ def fov_iou_batch(gt_boxes, pred_boxes):
     # Iterate over each ground truth and predicted box pair
     for i, Bg in enumerate(gt_boxes):
         for j, Bd in enumerate(pred_boxes):
-            ious[i, j] = fov_iou(deg2rad(Bg), deg2rad(Bd))
+            #ious[i, j] = fov_iou(deg2rad(Bg), deg2rad(Bd))
+            ious[i,j] = iou(Bg,Bd)
     return ious
 
 def hungarian_matching(gt_boxes_in, pred_boxes_in):
@@ -35,17 +36,17 @@ def hungarian_matching(gt_boxes_in, pred_boxes_in):
     pred_boxes = pred_boxes_in.clone()
     gt_boxes = gt_boxes_in.clone()
 
-    gt_boxes[:, 0] = gt_boxes_in[:, 0]*360/2
-    gt_boxes[:, 1] = gt_boxes_in[:, 1]*180/2
-    gt_boxes[:, 2] = gt_boxes_in[:, 2]*90
-    gt_boxes[:, 3] = gt_boxes_in[:, 3]*90
+    gt_boxes[:, 0] = gt_boxes_in[:, 0]
+    gt_boxes[:, 1] = gt_boxes_in[:, 1]
+    gt_boxes[:, 2] = gt_boxes_in[:, 2]
+    gt_boxes[:, 3] = gt_boxes_in[:, 3]
 
     gt_boxes = gt_boxes.to(torch.int)
 
-    pred_boxes[:, 0] = pred_boxes_in[:, 0]*360/2
-    pred_boxes[:, 1] = pred_boxes_in[:, 1]*180/2
-    pred_boxes[:, 2] = pred_boxes_in[:, 2]*90
-    pred_boxes[:, 3] = pred_boxes_in[:, 3]*90
+    pred_boxes[:, 0] = pred_boxes_in[:, 0]
+    pred_boxes[:, 1] = pred_boxes_in[:, 1]
+    pred_boxes[:, 2] = pred_boxes_in[:, 2]
+    pred_boxes[:, 3] = pred_boxes_in[:, 3]
 
     pred_boxes = pred_boxes.to(torch.int)
 
@@ -55,6 +56,8 @@ def hungarian_matching(gt_boxes_in, pred_boxes_in):
     cost_matrix = 1 - iou_matrix.detach().numpy()
 
     # Apply Hungarian matching
+
+    print(cost_matrix)
     gt_indices, pred_indices = linear_sum_assignment(cost_matrix)
 
     # Extract the matched pairs
@@ -70,7 +73,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 num_epochs = 500
 learning_rate = 0.0001
 batch_size = 10
-num_classes = 37
+num_classes = 3
 max_images = 200
 
 

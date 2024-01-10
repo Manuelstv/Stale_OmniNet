@@ -15,8 +15,8 @@ class PascalVOCDataset(Dataset):
         #self.data_folder = data_folder
         self.keep_difficult = keep_difficult
         #self.split_dir = os.path.join(data_folder, self.split.lower())
-        self.image_dir = '/home/mstveras/newdet/train_data/train/images'
-        self.annotation_dir = '/home/mstveras/newdet/train_data/train/labels'
+        self.image_dir = '/home/mstveras/fruits_dataset/train'
+        self.annotation_dir = '/home/mstveras/fruits_dataset/train'
         
         # Load all image files, sorting them to ensure that they are aligned
         self.image_filenames = [os.path.join(self.image_dir, f) for f in sorted(os.listdir(self.image_dir)) if f.endswith('.jpg')][:max_images]
@@ -48,45 +48,11 @@ class PascalVOCDataset(Dataset):
         difficulties = []
 
         label_mapping = {
-        'airconditioner': 0,
-        'backpack': 1,
-        'bathtub': 2,
-        'bed': 3,
-        'board': 4,
-        'book': 5,
-        'bottle': 6,
-        'bowl': 7,
-        'cabinet': 8,
-        'chair': 9,
-        'clock': 10,
-        'computer': 11,
-        'cup': 12,
-        'door': 13,
-        'fan': 14,
-        'fireplace': 15,
-        'heater': 16,
-        'keyboard': 17,
-        'light': 18,
-        'microwave': 19,
-        'mirror': 20,
-        'mouse': 21,
-        'oven': 22,
-        'person': 23,
-        'phone': 24,
-        'picture': 25,
-        'potted plant': 26,
-        'refrigerator': 27,
-        'sink': 28,
-        'sofa': 29,
-        'table': 30,
-        'toilet': 31,
-        'tv': 32,
-        'vase': 33,
-        'washer': 34,
-        'window': 35,
-        'wine glass': 36}
+        'apple': 0,
+        'banana':1,
+        'orange':2}
 
-        w, h = 1920, 960
+        w, h = image.shape[:2]
         new_w, new_h = 600, 300
 
 
@@ -110,12 +76,12 @@ class PascalVOCDataset(Dataset):
                 bbox = obj.find('bndbox')
 
                 # Normalize pixel coordinates of center to [-1, 1]
-                x_center = int(bbox.find('x_center').text)*(2/w)-1
-                y_center = int(bbox.find('y_center').text)*(2/h)-1
-                width = (float(bbox.find('width').text))/90
-                height = (float(bbox.find('height').text))/90
+                xmin = int(bbox.find('xmin').text)/w
+                ymin = int(bbox.find('xmax').text)/h
+                xmax = (int(bbox.find('ymin').text))/w
+                ymax = (int(bbox.find('ymax').text))/h
 
-                boxes.append([x_center, y_center, width, height])
+                boxes.append([xmin,ymin,xmax,ymax])
                 labels.append(label_mapping[obj.find('name').text])
                 confidences.append(1)
 
@@ -124,6 +90,8 @@ class PascalVOCDataset(Dataset):
         confidences = torch.FloatTensor(confidences).unsqueeze(1)  # Convert to tensor
         
         image, labels, difficulties = transform(image, labels, difficulties, split=self.split, new_w = new_w, new_h = new_h) 
+
+        print(boxes)
 
 
         return image, boxes, labels, confidences

@@ -10,13 +10,26 @@ import numpy as np
 class PascalVOCDataset(Dataset):
 
     def __init__(self, split, keep_difficult=False, max_images=10):
+
         self.split = split.upper()
         assert self.split in {'TRAIN', 'TEST', 'VAL'}
-        #self.data_folder = data_folder
+
         self.keep_difficult = keep_difficult
-        #self.split_dir = os.path.join(data_folder, self.split.lower())
-        self.image_dir = '/home/mstveras/fruits_dataset/train'
-        self.annotation_dir = '/home/mstveras/fruits_dataset/train'
+
+        # Base directory for datasets
+        base_dir = '/home/mstveras/fruits_dataset'
+
+        # Assign directory based on split
+        if self.split == 'TRAIN':
+            self.image_dir = os.path.join(base_dir, 'train')
+            self.annotation_dir = os.path.join(base_dir, 'train')
+        elif self.split == 'VAL':
+            self.image_dir = os.path.join(base_dir, 'val')
+            self.annotation_dir = os.path.join(base_dir, 'val')
+        elif self.split == 'TEST':
+            self.image_dir = os.path.join(base_dir, 'test')
+            self.annotation_dir = os.path.join(base_dir, 'test')
+        self.split = split.upper()
         
         # Load all image files, sorting them to ensure that they are aligned
         self.image_filenames = [os.path.join(self.image_dir, f) for f in sorted(os.listdir(self.image_dir)) if f.endswith('.jpg')][:max_images]
@@ -27,7 +40,6 @@ class PascalVOCDataset(Dataset):
         for img_filename, ann_filename in zip(self.image_filenames, self.annotation_filenames):
             img_basename = os.path.splitext(img_filename)[0][-7:-3]
             ann_basename = os.path.splitext(ann_filename)[0][-7:-3]
-            #print(img_basename, ann_basename)
             assert img_basename == ann_basename, f"File name mismatch: {img_filename} and {ann_filename}"
 
         # If max_images is set, limit the dataset size
@@ -90,8 +102,6 @@ class PascalVOCDataset(Dataset):
         confidences = torch.FloatTensor(confidences).unsqueeze(1)  # Convert to tensor
         
         image, labels, difficulties = transform(image, labels, difficulties, split=self.split, new_w = new_w, new_h = new_h) 
-
-        #print(image.dtype)
 
         return image, boxes, labels, confidences
 

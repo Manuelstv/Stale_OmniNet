@@ -45,7 +45,7 @@ def angle2radian(angle_sph_box, mode='convention'):
 def deg2rad(degrees):
     return [math.radians(degree) for degree in degrees]
 
-def calculate_iou(box1, box2):
+def iou(box1, box2):
     """
     Calculate the Intersection over Union (IoU) of two bounding boxes.
 
@@ -53,8 +53,11 @@ def calculate_iou(box1, box2):
     box1, box2: tuples of (xmin, ymin, xmax, ymax)
     """
     # Unpack the coordinates
-    xmin1, ymin1, xmax1, ymax1 = box1
-    xmin2, ymin2, xmax2, ymax2 = box2
+
+    new_w, new_h = 600, 300
+
+    xmin1, ymin1, xmax1, ymax1 = box1[0]*new_w, box1[1]*new_h, box1[2]*new_w, box1[3]*new_h
+    xmin2, ymin2, xmax2, ymax2 = box2[0]*new_w, box2[1]*new_h, box2[2]*new_w, box2[3]*new_h
 
     # Calculate the (x, y)-coordinates of the intersection rectangle
     x_left = max(xmin1, xmin2)
@@ -75,10 +78,6 @@ def calculate_iou(box1, box2):
 
     # Calculate union area
     union_area = box1_area + box2_area - intersection_area
-
-    # Ensure union area is not zero (to avoid division by zero)
-    if union_area == 0:
-        return 0.0
 
     # Calculate IoU
     iou = intersection_area / union_area
@@ -198,12 +197,12 @@ translated_b1 = translate_coordinates([b1], [theta_origin_deg, phi_origin_deg])[
 translated_b2 = translate_coordinates([b2], [theta_origin_deg, phi_origin_deg])[0]
 '''
 
+'''
 if __name__ == '__main__':
 # Test case from Table I
     b1 = [0,   54,   24,   20]  # BFoV parameters for Bg
     b2 = [150, -2, 45, 45]  # BFoV parameters for Bd
 
-    '''
     theta_origin_deg = 0
     phi_origin_deg = 0
 
@@ -215,7 +214,7 @@ if __name__ == '__main__':
     b1 = translate_coordinates([b1], [theta_origin_deg, phi_origin_deg])[0]
     b2 = translate_coordinates([b2], [theta_origin_deg, phi_origin_deg])[0]
 
-    print(b1, b2)'''
+    print(b1, b2)
 
     #b1 = [30, 60, 60, 60]
     #b2 = [60, 60, 60, 60]
@@ -270,4 +269,4 @@ if __name__ == '__main__':
     b2 = [60, 55, 40, 50]
     b1_rad = angle2radian(b1)
     b2_rad = angle2radian(b2)
-    print(fov_iou(b1_rad, b2_rad))
+    print(fov_iou(b1_rad, b2_rad))'''

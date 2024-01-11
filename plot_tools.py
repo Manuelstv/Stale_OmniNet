@@ -61,3 +61,28 @@ def process_and_save_image(images, boxes, color, save_path):
 
     cv2.imwrite(save_path, images)
     return images
+
+
+def process_and_save_image_planar(images, boxes, color, save_path):
+    """
+    Process an image from a list, draw bounding boxes on it, and save the image.
+
+    Args:
+    - images (list of np.array): A list of images, each as a NumPy array.
+    - boxes (list of tuples): A list of bounding boxes, each box defined as a tuple (x_min, y_min, x_max, y_max).
+    - color (tuple): Color of the bounding box in BGR (Blue, Green, Red) format.
+    - save_path (str): The file path where the processed image will be saved.
+    """
+    # Check if images list is not empty
+    if not images:
+        raise ValueError("The images list is empty.")
+
+    # Process each image
+    for img in images:
+        # Draw each bounding box on the image
+        for box in boxes:
+            x_min, y_min, x_max, y_max = box
+            cv2.rectangle(img, (x_min, y_min), (x_max, y_max), color, 2)
+
+        # Save the processed image
+        cv2.imwrite(save_path, img)

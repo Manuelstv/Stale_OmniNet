@@ -5,22 +5,29 @@ import numpy as np
 from torch.utils.data import DataLoader
 import torch.nn.functional as F
 from scipy.optimize import linear_sum_assignment
-from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss
 import torch.nn.init as init
 
 from model import SimpleObjectDetector, SimpleObjectDetectorMobile, SimpleObjectDetectorResnet
 from datasets import PascalVOCDataset
-torch.cuda.empty_cache()
 
 import cv2
 import json
 from sphiou import Sph
-from plot_tools import process_and_save_image
+from plot_tools import process_and_save_image, process_and_save_image_planar
 from foviou import fov_iou, deg2rad, angle2radian, fov_giou_loss, iou
 from sph2pob import sph_iou_aligned, fov_iou_aligned
-import math
 
 def fov_iou_batch(gt_boxes, pred_boxes):
+    """
+    Calculate the Intersection over Union (IoU) for each pair of ground truth and predicted boxes.
+
+    Args:
+    - gt_boxes (Tensor): A tensor of ground truth bounding boxes.
+    - pred_boxes (Tensor): A tensor of predicted bounding boxes.
+
+    Returns:
+    - Tensor: A matrix of IoU values, where each element [i, j] is the IoU of the ith ground truth box and the jth predicted box.
+    """
     # Initialize a tensor to store IoU values
     ious = torch.zeros((len(gt_boxes), len(pred_boxes)))
 
@@ -32,6 +39,17 @@ def fov_iou_batch(gt_boxes, pred_boxes):
     return ious
 
 def hungarian_matching(gt_boxes_in, pred_boxes_in):
+    """
+    Perform Hungarian matching between ground truth and predicted boxes to find the best match based on IoU scores.
+
+    Args:
+    - gt_boxes_in (Tensor): A tensor of ground truth bounding boxes.
+    - pred_boxes_in (Tensor): A tensor of predicted bounding boxes.
+
+    Returns:
+    - list of tuples: Matched pairs of ground truth and predicted boxes.
+    - Tensor: IoU scores for the matched pairs.
+    """
     # Compute the batch IoUs
     pred_boxes = pred_boxes_in.clone()
     gt_boxes = gt_boxes_in.clone()
@@ -41,23 +59,20 @@ def hungarian_matching(gt_boxes_in, pred_boxes_in):
     gt_boxes[:, 2] = gt_boxes_in[:, 2]
     gt_boxes[:, 3] = gt_boxes_in[:, 3]
 
-    gt_boxes = gt_boxes.to(torch.int)
+    gt_boxes = gt_boxes.to(torch.float)
 
     pred_boxes[:, 0] = pred_boxes_in[:, 0]
     pred_boxes[:, 1] = pred_boxes_in[:, 1]
     pred_boxes[:, 2] = pred_boxes_in[:, 2]
     pred_boxes[:, 3] = pred_boxes_in[:, 3]
 
-    pred_boxes = pred_boxes.to(torch.int)
-
+    pred_boxes = pred_boxes.to(torch.float)
     iou_matrix = fov_iou_batch(gt_boxes, pred_boxes)
 
     # Convert IoUs to cost
     cost_matrix = 1 - iou_matrix.detach().numpy()
 
     # Apply Hungarian matching
-
-    print(cost_matrix)
     gt_indices, pred_indices = linear_sum_assignment(cost_matrix)
 
     # Extract the matched pairs
@@ -65,85 +80,93 @@ def hungarian_matching(gt_boxes_in, pred_boxes_in):
 
     return matched_pairs, iou_matrix[gt_indices, pred_indices]
 
-torch.cuda.empty_cache()
-# Set device
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-# Hyperparameters
-num_epochs = 500
-learning_rate = 0.0001
-batch_size = 10
-num_classes = 3
-max_images = 200
-
-
-# Initialize dataset and dataloader
-train_dataset = PascalVOCDataset(split='TRAIN', keep_difficult=False, max_images=max_images)
-train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, collate_fn=train_dataset.collate_fn)
-
 def init_weights(m):
+    """
+    Initialize the weights of a linear layer using Xavier uniform initialization.
+
+    Args:
+    - m (nn.Module): A linear layer of a neural network.
+
+    Note:
+    - This function is designed to be applied to a linear layer of a PyTorch model.
+    - If the layer has a bias term, it will be initialized to zero.
+    """
     if isinstance(m, nn.Linear):
         # Choose the initialization method here (e.g., Xavier, He)
         init.xavier_uniform_(m.weight)
         if m.bias is not None:
             init.zeros_(m.bias)
 
+if __name__ == "__main__":
 
-model = SimpleObjectDetector(num_boxes=200, num_classes=num_classes).to(device)
-model.fc1.apply(init_weights)
-model.det_head.apply(init_weights)
+    torch.cuda.empty_cache()
 
-optimizer = optim.Adam(model.parameters(), lr=learning_rate)
+    # Set device
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-for epoch in range(num_epochs):
-    model.train()
-    total_loss = 0
-    total_matches = 0
-    total_regression_loss = torch.tensor(0.0, device=device, requires_grad=True)
+    # Hyperparameters
+    num_epochs = 500
+    learning_rate = 0.0001
+    batch_size = 10
+    num_classes = 3
+    max_images = 200
+    num_boxes = 3
 
-    for i, (images, boxes_list, labels_list, confidences_list) in enumerate(train_loader):
-        images = images.to(device)
-        optimizer.zero_grad()
-        detection_preds = model(images)
-        n = 0
 
-        for boxes, labels, det_preds in zip(boxes_list, labels_list, detection_preds):
-            
-            boxes = boxes.to(device)
-            det_preds = det_preds.to(device)          
-            labels = labels.to(device)
-            matches, matched_iou_scores = hungarian_matching(boxes, det_preds)
-            regression_loss = (1 - matched_iou_scores).mean()
+    # Initialize dataset and dataloader
+    train_dataset = PascalVOCDataset(split='TRAIN', keep_difficult=False, max_images=max_images)
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, collate_fn=train_dataset.collate_fn)
 
-            total_regression_loss = total_regression_loss + regression_loss
-            total_matches += len(matches)
-            
-            #salvando images de 10 em 10 épocas
-            if epoch>0 and epoch%10==0:
-            #if True:
-                #pass
-                img1 = images[n].permute(1,2,0).cpu().numpy()*255
-                img = process_and_save_image(img1, boxes.cpu().detach().numpy(), (0,255,0), f'/home/mstveras/images/img{n}.png')
-                img = process_and_save_image(img, det_preds.cpu().detach().numpy(), (255,0,0), f'/home/mstveras/images/img2_{n}.png')
-            
-                n+=1
+    model = SimpleObjectDetector(num_boxes=num_boxes, num_classes=num_classes).to(device)
+    model.fc1.apply(init_weights)
+    model.det_head.apply(init_weights)
 
-        if total_matches > 0:
-            avg_regression_loss = total_regression_loss / total_matches
-        else:
-            avg_regression_loss = total_regression_loss*0
-            print('not matched')
+    optimizer = optim.Adam(model.parameters(), lr=learning_rate)
 
-        # Backward pass and optimize
-        avg_regression_loss.backward()
-        optimizer.step()
+    for epoch in range(num_epochs):
+        model.train()
+        total_loss = 0
+        total_matches = 0
+        total_regression_loss = torch.tensor(0.0, device=device, requires_grad=True)
 
-        total_loss += avg_regression_loss.item()
+        for i, (images, boxes_list, labels_list, confidences_list) in enumerate(train_loader):
+            images = images.to(device)
+            optimizer.zero_grad()
+            detection_preds = model(images)
+            losses = []
+            n = 0
 
-    avg_epoch_loss = total_loss / len(train_loader)
-    print(f"Epoch {epoch}/{num_epochs}: Loss: {avg_epoch_loss}")
+            for boxes, labels, det_preds in zip(boxes_list, labels_list, detection_preds):
+                boxes = boxes.to(device)
+                det_preds = det_preds.to(device)     
+                labels = labels.to(device)
+                matches, matched_iou_scores = hungarian_matching(boxes, det_preds)
+                regression_loss = (1 - matched_iou_scores).mean()
+                losses.append(regression_loss)
+                total_matches += len(matches)
+                
+                #salvando images de 10 em 10 épocas
+                if epoch>0 and epoch%10==0:
+                #if True:
+                    #pass
+                    img1 = images[n].permute(1,2,0).cpu().numpy()*255
+                    img = process_and_save_image_planar(img1, boxes.cpu().detach().numpy(), (0,255,0), f'/home/mstveras/images/img{n}.png')
+                    img = process_and_save_image_planar(img, det_preds.cpu().detach().numpy(), (255,0,0), f'/home/mstveras/images/img2_{n}.png')
+                
+                    n+=1
 
-model_file = "best.pth"
-torch.save(model.state_dict(), model_file)
-print(f"Model saved to {model_file} after Epoch {epoch + 1}")
-print('Training completed.')
+            if total_matches > 0:
+                avg_regression_loss = sum(losses) / total_matches
+                avg_regression_loss.backward()  # Backpropagate here
+                optimizer.step()  # Update the weights once per batch
+                total_loss += avg_regression_loss.item()
+            else:
+                print('No matches found, not backpropagating.')
+
+        avg_epoch_loss = total_loss / len(train_loader)
+        print(f"Epoch {epoch}/{num_epochs}: Loss: {avg_epoch_loss}")
+
+    model_file = "best.pth"
+    torch.save(model.state_dict(), model_file)
+    print(f"Model saved to {model_file} after Epoch {epoch + 1}")
+    print('Training completed.')

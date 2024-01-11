@@ -77,8 +77,8 @@ class PascalVOCDataset(Dataset):
 
                 # Normalize pixel coordinates of center to [-1, 1]
                 xmin = int(bbox.find('xmin').text)/w
-                ymin = int(bbox.find('xmax').text)/h
-                xmax = (int(bbox.find('ymin').text))/w
+                ymin = int(bbox.find('ymin').text)/h
+                xmax = (int(bbox.find('xmax').text))/w
                 ymax = (int(bbox.find('ymax').text))/h
 
                 boxes.append([xmin,ymin,xmax,ymax])
@@ -90,9 +90,6 @@ class PascalVOCDataset(Dataset):
         confidences = torch.FloatTensor(confidences).unsqueeze(1)  # Convert to tensor
         
         image, labels, difficulties = transform(image, labels, difficulties, split=self.split, new_w = new_w, new_h = new_h) 
-
-        print(boxes)
-
 
         return image, boxes, labels, confidences
 

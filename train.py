@@ -105,11 +105,11 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # Hyperparameters
-    num_epochs = 5000
+    num_epochs = 50
     learning_rate = 0.00001
     batch_size = 10
     num_classes = 3
-    max_images = 10
+    max_images = 100
     num_boxes = 3
 
     new_w, new_h = 600,300

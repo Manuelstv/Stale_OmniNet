@@ -91,6 +91,8 @@ class PascalVOCDataset(Dataset):
         
         image, labels, difficulties = transform(image, labels, difficulties, split=self.split, new_w = new_w, new_h = new_h) 
 
+        #print(image.dtype)
+
         return image, boxes, labels, confidences
 
     def __len__(self):

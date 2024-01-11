@@ -74,15 +74,22 @@ def process_and_save_image_planar(images, boxes, color, save_path):
     - save_path (str): The file path where the processed image will be saved.
     """
     # Check if images list is not empty
-    if not images:
-        raise ValueError("The images list is empty.")
+    #if not images:
+    #    raise ValueError("The images list is empty.")
 
     # Process each image
-    for img in images:
-        # Draw each bounding box on the image
-        for box in boxes:
-            x_min, y_min, x_max, y_max = box
-            cv2.rectangle(img, (x_min, y_min), (x_max, y_max), color, 2)
 
-        # Save the processed image
-        cv2.imwrite(save_path, img)
+    new_w, new_h = 600, 300
+
+    #print(type(images))
+
+    #images = np.ascontiguousarray(images, dtype = np.uint8)
+    #images2 = images.copy()
+
+    for box in boxes:
+        x_min, y_min, x_max, y_max = int(box[0]*new_w), int(box[1]*new_h), int(box[2]*new_w), int(box[3]*new_h)
+        #images = np.ascontiguousarray(images, dtype = np.uint8)
+        cv2.rectangle(images, (x_min, y_min), (x_max, y_max), color, 2)
+
+    # Save the processed image
+    cv2.imwrite(save_path, images)

@@ -2,6 +2,7 @@ import math
 import torch
 from pdb import set_trace as pause
 import numpy as np
+from numpy import deg2rad
 
 
 
@@ -40,10 +41,6 @@ def angle2radian(angle_sph_box, mode='convention'):
             radian_sph_box[1] = math.pi / 2 - radian_sph_box[1]
 
     return radian_sph_box
-
-# Função para converter graus em radianos
-def deg2rad(degrees):
-    return [math.radians(degree) for degree in degrees]
 
 def iou(box1, box2):
     """

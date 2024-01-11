@@ -105,12 +105,14 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # Hyperparameters
-    num_epochs = 500
-    learning_rate = 0.0001
+    num_epochs = 5000
+    learning_rate = 0.00001
     batch_size = 10
     num_classes = 3
-    max_images = 200
+    max_images = 10
     num_boxes = 3
+
+    new_w, new_h = 600,300
 
 
     # Initialize dataset and dataloader
@@ -146,12 +148,25 @@ if __name__ == "__main__":
                 total_matches += len(matches)
                 
                 #salvando images de 10 em 10 épocas
-                if epoch>0 and epoch%10==0:
+                if epoch>0 and epoch%100==0:
                 #if True:
                     #pass
-                    img1 = images[n].permute(1,2,0).cpu().numpy()*255
-                    img = process_and_save_image_planar(img1, boxes.cpu().detach().numpy(), (0,255,0), f'/home/mstveras/images/img{n}.png')
-                    img = process_and_save_image_planar(img, det_preds.cpu().detach().numpy(), (255,0,0), f'/home/mstveras/images/img2_{n}.png')
+                    img1 = images[n].mul(255).clamp(0, 255).permute(1, 2, 0).cpu().numpy().astype(np.uint8).copy()
+                    #cv2.imwrite('branco2.jpg', img1)
+
+                    for box in boxes:
+                        x_min, y_min, x_max, y_max = int(box[0]*new_w), int(box[1]*new_h), int(box[2]*new_w), int(box[3]*new_h)
+                        #images = np.ascontiguousarray(images, dtype = np.uint8)
+                        cv2.rectangle(img1, (x_min, y_min), (x_max, y_max), (0,255,0))
+
+                    for box in det_preds:
+                        x_min, y_min, x_max, y_max = int(box[0]*new_w), int(box[1]*new_h), int(box[2]*new_w), int(box[3]*new_h)
+                        #images = np.ascontiguousarray(images, dtype = np.uint8)
+                        cv2.rectangle(img1, (x_min, y_min), (x_max, y_max), (255,0,0))
+                    cv2.imwrite(f'/home/mstveras/images/img{n}.jpg', img1)
+
+                    #img = process_and_save_image_planar(img1, boxes.cpu().detach().numpy(), (0,255,0), f'/home/mstveras/images/img{n}.jpg')
+                    #img = process_and_save_image_planar(img, det_preds.cpu().detach().numpy(), (255,0,0), f'/home/mstveras/images/img2_{n}.jpg')
                 
                     n+=1
 

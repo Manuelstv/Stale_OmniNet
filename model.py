@@ -56,7 +56,7 @@ class SimpleObjectDetectorMobile(nn.Module):
         self.backbone = mobilenet.features
 
         # Adjust this based on the output size of your backbone
-        fc_1_features = 64000  # Adjust for the output size of MobileNet
+        fc_1_features = 243200 # Adjust for the output size of MobileNet
         #fc_2_features = 2304
 
         # Fully connected layers
@@ -69,22 +69,23 @@ class SimpleObjectDetectorMobile(nn.Module):
     def forward(self, x):
         x = self.backbone(x)
         x = x.view(x.size(0), -1)
+        #print(x.size())
         x = F.relu(self.fc1(x))
         #x = F.relu(self.fc2(x))
 
         detection_output = self.det_head(x).view(-1, self.num_boxes, 4)
-        classification_output = self.cls_head(x).view(-1, self.num_boxes, self.num_classes)
-        confidence_output = torch.sigmoid(self.conf_head(x)).view(-1, self.num_boxes, 1)
+        #classification_output = self.cls_head(x).view(-1, self.num_boxes, self.num_classes)
+        #confidence_output = torch.sigmoid(self.conf_head(x)).view(-1, self.num_boxes, 1)
 
         # Apply the required transformations to the detection_output
         # Scale the first two columns to be in the range [-1, 1]
-        detection_output[:, :, :2] = torch.tanh(detection_output[:, :, :2])
+        #detection_output[:, :, :2] = torch.tanh(detection_output[:, :, :2])
         # Scale the third and fourth columns to be in the range [0, 1]
-        detection_output[:, :, 2:4] = torch.sigmoid(detection_output[:, :, 2:4])
+        detection_output[:, :, 0:4] = torch.sigmoid(detection_output[:, :, 0:4])
         # Set the last column to be 0
         #detection_output[:, :, 4] = 0.0
 
-        return detection_output, classification_output, confidence_output
+        return detection_output
 
 #original res
 class SimpleObjectDetector(nn.Module):
@@ -153,8 +154,8 @@ class SimpleObjectDetector(nn.Module):
 
         # Apply the required transformations to the detection_output
         # Scale the first two columns to be in the range [-1, 1]
-        detection_output[:, :, :2] = torch.tanh(detection_output[:, :, :2])
+        #detection_output[:, :, :2] = torch.tanh(detection_output[:, :, :2])
         # Scale the third and fourth columns to be in the range [0, 1]
-        detection_output[:, :, 2:4] = torch.sigmoid(detection_output[:, :, 2:4])
+        detection_output[:, :, 0:4] = torch.sigmoid(detection_output[:, :, 0:4])
 
         return detection_output

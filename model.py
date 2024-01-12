@@ -119,8 +119,8 @@ class SimpleObjectDetector(nn.Module):
         # Calculate the flattened size after convolution and pooling layers
         # Assuming the input image size is 1920x960
         # The size after conv and pool layers would still be [32, 120, 60]
-        fc_1_features = 512*2
-        fc_2_features = 256*2
+        fc_1_features = 512
+        fc_2_features = 256
 
         #self.dropout1 = nn.Dropout(0.2)
         #self.dropout2 = nn.Dropout(0.2)

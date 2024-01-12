@@ -17,7 +17,7 @@ class PascalVOCDataset(Dataset):
         self.keep_difficult = keep_difficult
 
         # Base directory for datasets
-        base_dir = '/home/manuelveras/fruits_dataset'
+        base_dir = '/home/manuelveras/newdet/tomato'
 
         # Assign directory based on split
         if self.split == 'TRAIN':
@@ -32,7 +32,7 @@ class PascalVOCDataset(Dataset):
         self.split = split.upper()
         
         # Load all image files, sorting them to ensure that they are aligned
-        self.image_filenames = [os.path.join(self.image_dir, f) for f in sorted(os.listdir(self.image_dir)) if f.endswith('.jpg')][:max_images]
+        self.image_filenames = [os.path.join(self.image_dir, f) for f in sorted(os.listdir(self.image_dir)) if f.endswith('.png')][:max_images]
         self.annotation_filenames = [os.path.join(self.annotation_dir, f) for f in sorted(os.listdir(self.annotation_dir)) if f.endswith('.xml')][:max_images]
         
         assert len(self.image_filenames) == len(self.annotation_filenames)
@@ -60,12 +60,10 @@ class PascalVOCDataset(Dataset):
         difficulties = []
 
         label_mapping = {
-        'apple': 0,
-        'banana':1,
-        'orange':2}
+        'tomato': 0}
 
-        w, h = image.shape[:2]
-        new_w, new_h = 600,300
+        h, w = image.shape[:2]
+        new_h, new_w = 300,300
 
 
         # The coordinates for each bounding box are given in the format (θ, ϕ, α, β), where:

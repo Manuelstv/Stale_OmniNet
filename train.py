@@ -71,6 +71,8 @@ def hungarian_matching(gt_boxes_in, pred_boxes_in):
     pred_boxes[:, 2] = pred_boxes_in[:, 2]
     pred_boxes[:, 3] = pred_boxes_in[:, 3]
 
+    print(pred_boxes)
+
     pred_boxes = pred_boxes.to(torch.float)
     iou_matrix = fov_iou_batch(gt_boxes, pred_boxes)
 
@@ -150,6 +152,8 @@ def validate_model(epoch, val_loader, model, device, best_val_loss):
                 
                 matched_iou_scores = iou_scores[gt_indices, pred_indices]
                 iou_loss = (1 - matched_iou_scores).mean()
+                n=i
+                save_images(boxes, det_preds, new_w, new_h, n, images)
                 
             total_val_loss += iou_loss.item()
 
@@ -166,16 +170,15 @@ def validate_model(epoch, val_loader, model, device, best_val_loss):
 def process_batches(boxes_list, labels_list, detection_preds, device, new_w, new_h, epoch, n, images):
     for boxes, labels, det_preds in zip(boxes_list, labels_list, detection_preds):
         boxes, det_preds, labels = boxes.to(device), det_preds.to(device), labels.to(device)
-        save_images(epoch, boxes, det_preds, new_w, new_h, n, images)
+        #save_images(boxes, det_preds, new_w, new_h, n, images)
         n += 1
         yield boxes, labels, det_preds
 
-def save_images(epoch, boxes, det_preds, new_w, new_h, n, images):
-    if epoch > 0 and epoch % 100 == 0:
-        img1 = images[n].mul(255).clamp(0, 255).permute(1, 2, 0).cpu().numpy().astype(np.uint8).copy()
-        draw_boxes(img1, boxes, (0, 255, 0), new_w, new_h)
-        draw_boxes(img1, det_preds, (255, 0, 0), new_w, new_h)
-        cv2.imwrite(f'/home/manuelveras/images/img{n}.jpg', img1)
+def save_images(boxes, det_preds, new_w, new_h, n, images):
+    img1 = images[n].mul(255).clamp(0, 255).permute(1, 2, 0).cpu().numpy().astype(np.uint8).copy()
+    draw_boxes(img1, boxes, (0, 255, 0), new_w, new_h)
+    draw_boxes(img1, det_preds, (255, 0, 0), new_w, new_h)
+    cv2.imwrite(f'/home/manuelveras/images/img{n}.jpg', img1)
 
 def draw_boxes(image, boxes, color, new_w, new_h):
     for box in boxes:
@@ -204,7 +207,7 @@ if __name__ == "__main__":
     num_boxes = 3
     best_val_loss = float('inf')
 
-    new_w, new_h = 600,300
+    new_w, new_h = 300,300
 
     # Initialize dataset and dataloader
     train_dataset = PascalVOCDataset(split='TRAIN', keep_difficult=False, max_images=max_images)

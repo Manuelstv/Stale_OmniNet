@@ -99,25 +99,28 @@ def init_weights(m):
 
 if __name__ == "__main__":
 
-    #torch.cuda.empty_cache()
+    torch.cuda.empty_cache()
 
     # Set device
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # Hyperparameters
     num_epochs = 5
-    learning_rate = 0.00001
+    learning_rate = 0.0001
     batch_size = 10
     num_classes = 3
     max_images = 10
     num_boxes = 3
+    best_val_loss = float('inf')
 
     new_w, new_h = 600,300
-
 
     # Initialize dataset and dataloader
     train_dataset = PascalVOCDataset(split='TRAIN', keep_difficult=False, max_images=max_images)
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, collate_fn=train_dataset.collate_fn)
+
+    val_dataset = PascalVOCDataset(split='VAL', keep_difficult=False, max_images=max_images)
+    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=True, collate_fn=train_dataset.collate_fn)
 
     model = SimpleObjectDetector(num_boxes=num_boxes, num_classes=num_classes).to(device)
     model.fc1.apply(init_weights)
@@ -161,7 +164,6 @@ if __name__ == "__main__":
 
                     for box in det_preds:
                         x_min, y_min, x_max, y_max = int(box[0]*new_w), int(box[1]*new_h), int(box[2]*new_w), int(box[3]*new_h)
-                        #images = np.ascontiguousarray(images, dtype = np.uint8)
                         cv2.rectangle(img1, (x_min, y_min), (x_max, y_max), (255,0,0))
                     cv2.imwrite(f'/home/mstveras/images/img{n}.jpg', img1)
 
@@ -181,7 +183,34 @@ if __name__ == "__main__":
         avg_epoch_loss = total_loss / len(train_loader)
         print(f"Epoch {epoch}/{num_epochs}: Loss: {avg_epoch_loss}")
 
-    model_file = "best.pth"
-    torch.save(model.state_dict(), model_file)
-    print(f"Model saved to {model_file} after Epoch {epoch + 1}")
-    print('Training completed.')
+        # Validation Phase
+        model.eval()  # Set the model to evaluation mode
+        val_loss = 0
+        with torch.no_grad():  # Disable gradient computation
+            for images, boxes_list, labels_list, confidences_list in val_loader:
+                images = images.to(device)
+                # Forward pass for validation
+                detection_preds = model(images)
+                val_losses = []
+                for boxes, labels, det_preds in zip(boxes_list, labels_list, detection_preds):
+                    boxes = boxes.to(device)
+                    det_preds = det_preds.to(device)
+                    labels = labels.to(device)
+                    matches, matched_iou_scores = hungarian_matching(boxes, det_preds)
+                    regression_loss = (1 - matched_iou_scores).mean()
+                    val_losses.append(regression_loss)
+                if len(matches) > 0:
+                    avg_val_regression_loss = sum(val_losses) / len(matches)
+                    val_loss += avg_val_regression_loss.item()
+
+        avg_val_loss = val_loss / len(val_loader)
+        print(f"Epoch {epoch}/{num_epochs}: Validation Loss: {avg_val_loss}")
+
+        # Save the model if it has the best validation loss so far
+        if avg_val_loss < best_val_loss:
+            best_val_loss = avg_val_loss
+            best_model_file = f"best_epoch_{epoch}.pth"
+            torch.save(model.state_dict(), best_model_file)
+            print(f"Model saved to {best_model_file} with Validation Loss: {avg_val_loss}")
+
+    print('Training and validation completed.')

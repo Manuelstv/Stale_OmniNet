@@ -56,24 +56,9 @@ def hungarian_matching(gt_boxes_in, pred_boxes_in):
     - Tensor: IoU scores for the matched pairs.
     """
     # Compute the batch IoUs
-    pred_boxes = pred_boxes_in.clone()
-    gt_boxes = gt_boxes_in.clone()
+    gt_boxes = gt_boxes_in.clone().to(torch.float)
+    pred_boxes = pred_boxes_in.clone().to(torch.float)
 
-    gt_boxes[:, 0] = gt_boxes_in[:, 0]
-    gt_boxes[:, 1] = gt_boxes_in[:, 1]
-    gt_boxes[:, 2] = gt_boxes_in[:, 2]
-    gt_boxes[:, 3] = gt_boxes_in[:, 3]
-
-    gt_boxes = gt_boxes.to(torch.float)
-
-    pred_boxes[:, 0] = pred_boxes_in[:, 0]
-    pred_boxes[:, 1] = pred_boxes_in[:, 1]
-    pred_boxes[:, 2] = pred_boxes_in[:, 2]
-    pred_boxes[:, 3] = pred_boxes_in[:, 3]
-
-    print(pred_boxes)
-
-    pred_boxes = pred_boxes.to(torch.float)
     iou_matrix = fov_iou_batch(gt_boxes, pred_boxes)
 
     # Convert IoUs to cost
@@ -90,7 +75,7 @@ def hungarian_matching(gt_boxes_in, pred_boxes_in):
 
 def init_weights(m):
     """
-    Initialize the weights of a linear layer using Xavier uniform initialization.
+    Initialize the weights of a linear layer.
 
     Args:
     - m (nn.Module): A linear layer of a neural network.
@@ -100,10 +85,9 @@ def init_weights(m):
     - If the layer has a bias term, it will be initialized to zero.
     """
     if isinstance(m, nn.Linear):
-        # Choose the initialization method here (e.g., Xavier, He)
-        init.xavier_uniform_(m.weight)
+        nn.init.uniform_(m.weight, -10, 10)
         if m.bias is not None:
-            init.zeros_(m.bias)
+            nn.init.constant_(m.bias, 0)
 
 def train_one_epoch(epoch, train_loader, model, optimizer, device, new_w, new_h):
     model.train()
@@ -206,18 +190,17 @@ if __name__ == "__main__":
     max_images = 10
     num_boxes = 3
     best_val_loss = float('inf')
-
     new_w, new_h = 300,300
 
     # Initialize dataset and dataloader
-    train_dataset = PascalVOCDataset(split='TRAIN', keep_difficult=False, max_images=max_images)
+    train_dataset = PascalVOCDataset(split='TRAIN', keep_difficult=False, max_images=max_images, new_w = new_w, new_h = new_h)
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, collate_fn=train_dataset.collate_fn)
 
-    val_dataset = PascalVOCDataset(split='VAL', keep_difficult=False, max_images=max_images)
+    val_dataset = PascalVOCDataset(split='VAL', keep_difficult=False, max_images=max_images, new_w = new_w, new_h = new_h)
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=True, collate_fn=train_dataset.collate_fn)
 
     model = SimpleObjectDetector(num_boxes=num_boxes, num_classes=num_classes).to(device)
-    model.fc1.apply(init_weights)
+    #model.fc1.apply(init_weights)
     model.det_head.apply(init_weights)
 
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)

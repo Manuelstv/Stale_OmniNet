@@ -9,12 +9,14 @@ import numpy as np
 
 class PascalVOCDataset(Dataset):
 
-    def __init__(self, split, keep_difficult=False, max_images=10):
+    def __init__(self, split, keep_difficult=False, max_images=10, new_w = 600, new_h = 300):
 
         self.split = split.upper()
         assert self.split in {'TRAIN', 'TEST', 'VAL'}
 
         self.keep_difficult = keep_difficult
+        self.new_h = new_h
+        self.new_w = new_w
 
         # Base directory for datasets
         base_dir = '/home/manuelveras/newdet/tomato'
@@ -63,8 +65,6 @@ class PascalVOCDataset(Dataset):
         'tomato': 0}
 
         h, w = image.shape[:2]
-        new_h, new_w = 300,300
-
 
         # The coordinates for each bounding box are given in the format (θ, ϕ, α, β), where:
         # θ (theta) represents the longitudinal angle of the bounding box center. This is an angle that goes around the equator of the sphere, 
@@ -99,7 +99,7 @@ class PascalVOCDataset(Dataset):
         labels = torch.LongTensor(labels)
         confidences = torch.FloatTensor(confidences).unsqueeze(1)  # Convert to tensor
         
-        image, labels, difficulties = transform(image, labels, difficulties, split=self.split, new_w = new_w, new_h = new_h) 
+        image, labels, difficulties = transform(image, labels, difficulties, split=self.split, new_w = self.new_w, new_h = self.new_h) 
 
         return image, boxes, labels, confidences
 

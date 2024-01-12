@@ -62,7 +62,7 @@ def hungarian_matching(gt_boxes_in, pred_boxes_in):
     iou_matrix = fov_iou_batch(gt_boxes, pred_boxes)
 
     # Convert IoUs to cost
-    cost_matrix = 1 - iou_matrix.detach().numpy()
+    cost_matrix = 1 - iou_matrix.detach().cpu().numpy()
 
     # Apply Hungarian matching
     gt_indices, pred_indices = linear_sum_assignment(cost_matrix)
@@ -115,7 +115,7 @@ def train_one_epoch(epoch, train_loader, model, optimizer, device, new_w, new_h)
         batch_loss.backward()
         optimizer.step()
 
-        total_loss = total_loss.item() + batch_loss.item()
+        total_loss = total_loss + batch_loss.item()
 
     print(f"Epoch {epoch}: Train Loss: {total_loss}")
 
@@ -167,7 +167,7 @@ def save_images(boxes, det_preds, new_w, new_h, n, images):
     img1 = images[n].mul(255).clamp(0, 255).permute(1, 2, 0).cpu().numpy().astype(np.uint8).copy()
     draw_boxes(img1, boxes, (0, 255, 0), new_w, new_h)
     draw_boxes(img1, det_preds, (255, 0, 0), new_w, new_h)
-    cv2.imwrite(f'/home/manuelveras/images/img{n}.jpg', img1)
+    cv2.imwrite(f'/home/mstveras/images/img{n}.jpg', img1)
 
 def draw_boxes(image, boxes, color, new_w, new_h):
     for box in boxes:
@@ -192,8 +192,8 @@ if __name__ == "__main__":
     learning_rate = 0.001
     batch_size = 8
     num_classes = 1
-    max_images = 800
-    num_boxes = 30
+    max_images = 8
+    num_boxes = 10
     best_val_loss = float('inf')
     new_w, new_h = 600,300
 
@@ -201,8 +201,8 @@ if __name__ == "__main__":
     train_dataset = PascalVOCDataset(split='TRAIN', keep_difficult=False, max_images=max_images, new_w = new_w, new_h = new_h)
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, collate_fn=train_dataset.collate_fn)
 
-    val_dataset = PascalVOCDataset(split='VAL', keep_difficult=False, max_images=max_images, new_w = new_w, new_h = new_h)
-    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=True, collate_fn=train_dataset.collate_fn)
+    #val_dataset = PascalVOCDataset(split='VAL', keep_difficult=False, max_images=max_images, new_w = new_w, new_h = new_h)
+    #val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=True, collate_fn=train_dataset.collate_fn)
 
     model = SimpleObjectDetector(num_boxes=num_boxes, num_classes=num_classes).to(device)
     model.det_head.apply(init_weights)
@@ -211,6 +211,6 @@ if __name__ == "__main__":
 
     for epoch in range(num_epochs):
         train_one_epoch(epoch, train_loader, model, optimizer, device, new_w, new_h)
-        validate_model(epoch, val_loader, model, device, best_val_loss)
+        #validate_model(epoch, val_loader, model, device, best_val_loss)
 
     print('Training and validation completed.')

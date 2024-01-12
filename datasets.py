@@ -19,7 +19,7 @@ class PascalVOCDataset(Dataset):
         self.new_w = new_w
 
         # Base directory for datasets
-        base_dir = '/home/manuelveras/newdet/tomato'
+        base_dir = '/home/mstveras/newdet/tomato'
 
         # Assign directory based on split
         if self.split == 'TRAIN':

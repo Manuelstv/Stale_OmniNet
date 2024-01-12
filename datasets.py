@@ -17,7 +17,7 @@ class PascalVOCDataset(Dataset):
         self.keep_difficult = keep_difficult
 
         # Base directory for datasets
-        base_dir = '/home/mstveras/fruits_dataset'
+        base_dir = '/home/manuelveras/fruits_dataset'
 
         # Assign directory based on split
         if self.split == 'TRAIN':
@@ -65,7 +65,7 @@ class PascalVOCDataset(Dataset):
         'orange':2}
 
         w, h = image.shape[:2]
-        new_w, new_h = 600, 300
+        new_w, new_h = 600,300
 
 
         # The coordinates for each bounding box are given in the format (θ, ϕ, α, β), where:

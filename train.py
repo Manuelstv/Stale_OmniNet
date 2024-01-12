@@ -1,21 +1,24 @@
-import torch
-import torch.optim as optim
-import torch.nn as nn
-import numpy as np
-from torch.utils.data import DataLoader
-import torch.nn.functional as F
-from scipy.optimize import linear_sum_assignment
-import torch.nn.init as init
-
-from model import SimpleObjectDetector, SimpleObjectDetectorMobile, SimpleObjectDetectorResnet
-from datasets import PascalVOCDataset
+import json
+import os
 
 import cv2
-import json
-from sphiou import Sph
+import numpy as np
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import torch.nn.init as init
+import torch.optim as optim
+from scipy.optimize import linear_sum_assignment
+from torch.utils.data import DataLoader
+
+from datasets import PascalVOCDataset
+from foviou import (deg2rad, fov_iou, fov_giou_loss, iou, angle2radian)
+from model import (SimpleObjectDetector, SimpleObjectDetectorMobile,
+                   SimpleObjectDetectorResnet)
 from plot_tools import process_and_save_image, process_and_save_image_planar
-from foviou import fov_iou, deg2rad, angle2radian, fov_giou_loss, iou
-from sph2pob import sph_iou_aligned, fov_iou_aligned
+from sphiou import Sph
+from sph2pob import sph_iou_aligned
+
 
 def fov_iou_batch(gt_boxes, pred_boxes):
     """
@@ -28,15 +31,17 @@ def fov_iou_batch(gt_boxes, pred_boxes):
     Returns:
     - Tensor: A matrix of IoU values, where each element [i, j] is the IoU of the ith ground truth box and the jth predicted box.
     """
-    # Initialize a tensor to store IoU values
-    ious = torch.zeros((len(gt_boxes), len(pred_boxes)))
+    # Initialize a tensor to store IoU values, on the same device as the input boxes
+    iou_values = []
+    for Bg in gt_boxes:
+        row = []
+        for Bd in pred_boxes:
+            row.append(iou(Bg, Bd))
+        iou_values.append(row)
 
-    # Iterate over each ground truth and predicted box pair
-    for i, Bg in enumerate(gt_boxes):
-        for j, Bd in enumerate(pred_boxes):
-            #ious[i, j] = fov_iou(deg2rad(Bg), deg2rad(Bd))
-            ious[i,j] = iou(Bg,Bd)
-    return ious
+    # Convert list of lists to a tensor
+    ious = torch.tensor(iou_values, device=gt_boxes.device, dtype=torch.float32)
+    return ious.requires_grad_()
 
 def hungarian_matching(gt_boxes_in, pred_boxes_in):
     """
@@ -76,9 +81,10 @@ def hungarian_matching(gt_boxes_in, pred_boxes_in):
     gt_indices, pred_indices = linear_sum_assignment(cost_matrix)
 
     # Extract the matched pairs
-    matched_pairs = [(gt_boxes[i], pred_boxes[j]) for i, j in zip(gt_indices, pred_indices)]
+    matched_pairs = [(gt_indices[i], pred_indices[i]) for i in range(len(gt_indices))]
 
-    return matched_pairs, iou_matrix[gt_indices, pred_indices]
+
+    return matched_pairs, iou_matrix
 
 def init_weights(m):
     """
@@ -100,22 +106,68 @@ def init_weights(m):
 def train_one_epoch(epoch, train_loader, model, optimizer, device, new_w, new_h):
     model.train()
     total_loss = 0
-    total_matches = 0
 
     for i, (images, boxes_list, labels_list, confidences_list) in enumerate(train_loader):
-        images, losses, n = images.to(device), [], 0
+        images = images.to(device)
         optimizer.zero_grad()
         detection_preds = model(images)
 
-        for boxes, labels, det_preds in process_batches(boxes_list, labels_list, detection_preds, device, new_w, new_h, epoch, n, images):
-            matches, matched_iou_scores = hungarian_matching(boxes, det_preds)
-            regression_loss = (1 - matched_iou_scores).mean()
-            losses.append(regression_loss)
-            total_matches += len(matches)
+        for boxes, labels, det_preds in process_batches(boxes_list, labels_list, detection_preds, device, new_w, new_h, epoch, i, images):
+            matches, iou_scores = hungarian_matching(boxes, det_preds)
 
-        update_model(losses, total_matches, total_loss, optimizer)
+            # Compute IoU loss for matched pairs (example using a simple IoU loss)
+            gt_indices = [match[0] for match in matches]
+            pred_indices = [match[1] for match in matches]
 
-    return total_loss / len(train_loader)
+            gt_indices = torch.tensor(gt_indices, dtype=torch.long, device=iou_scores.device)
+            pred_indices = torch.tensor(pred_indices, dtype=torch.long, device=iou_scores.device)
+            
+            matched_iou_scores = iou_scores[gt_indices, pred_indices]
+            iou_loss = (1-matched_iou_scores).mean()  # Negative IoU for minimization
+
+            # Backpropagate the IoU loss
+            iou_loss.backward()
+            optimizer.step()
+
+            total_loss += iou_loss.item()
+
+    avg_train_loss = total_loss / len(train_loader)
+    print(f"Epoch {epoch}: Train Loss: {avg_train_loss}")
+
+
+def validate_model(epoch, val_loader, model, device, best_val_loss):
+    model.eval()
+    total_val_loss = 0
+
+    with torch.no_grad():
+        for i, (images, boxes_list, labels_list, confidences_list) in enumerate(val_loader):
+            images = images.to(device)
+            detection_preds = model(images)
+
+            for boxes, labels, det_preds in process_batches(boxes_list, labels_list, detection_preds, device, new_w, new_h, epoch, i, images):
+                matches, iou_scores = hungarian_matching(boxes, det_preds)
+                
+                gt_indices = [match[0] for match in matches]
+                pred_indices = [match[1] for match in matches]
+
+                gt_indices = torch.tensor(gt_indices, dtype=torch.long, device=iou_scores.device)
+                pred_indices = torch.tensor(pred_indices, dtype=torch.long, device=iou_scores.device)
+                
+                matched_iou_scores = iou_scores[gt_indices, pred_indices]
+                iou_loss = (1 - matched_iou_scores).mean()
+                
+                total_val_loss += iou_loss.item()
+
+    print(len(val_loader))
+    avg_val_loss = total_val_loss / len(val_loader)
+    print(f"Epoch {epoch}: Validation Loss: {avg_val_loss}")
+
+    # Update best validation loss and save model if necessary
+    if avg_val_loss < best_val_loss:
+        best_val_loss = avg_val_loss
+        save_best_model(epoch, model)
+
+    return best_val_loss, epoch
 
 def process_batches(boxes_list, labels_list, detection_preds, device, new_w, new_h, epoch, n, images):
     for boxes, labels, det_preds in zip(boxes_list, labels_list, detection_preds):
@@ -129,52 +181,18 @@ def save_images(epoch, boxes, det_preds, new_w, new_h, n, images):
         img1 = images[n].mul(255).clamp(0, 255).permute(1, 2, 0).cpu().numpy().astype(np.uint8).copy()
         draw_boxes(img1, boxes, (0, 255, 0), new_w, new_h)
         draw_boxes(img1, det_preds, (255, 0, 0), new_w, new_h)
-        cv2.imwrite(f'/home/mstveras/images/img{n}.jpg', img1)
+        cv2.imwrite(f'/home/manuelveras/images/img{n}.jpg', img1)
 
 def draw_boxes(image, boxes, color, new_w, new_h):
     for box in boxes:
         x_min, y_min, x_max, y_max = [int(box[i] * new_w if i % 2 == 0 else box[i] * new_h) for i in range(4)]
         cv2.rectangle(image, (x_min, y_min), (x_max, y_max), color)
 
-def update_model(losses, total_matches, total_loss, optimizer):
-    if total_matches > 0:
-        avg_regression_loss = sum(losses) / total_matches
-        avg_regression_loss.backward()
-        optimizer.step()
-        total_loss += avg_regression_loss.item()
-    else:
-        print('No matches found, not backpropagating.')
-
-def validate_model(epoch, val_loader, model, device, best_val_loss):
-    model.eval()
-    val_loss = 0
-    with torch.no_grad():
-        for images, boxes_list, labels_list, confidences_list in val_loader:
-            images = images.to(device)
-            detection_preds = model(images)
-
-            val_losses = [process_validation(boxes, det_preds, labels, device) 
-                          for boxes, labels, det_preds in zip(boxes_list, labels_list, detection_preds)]
-
-            val_loss += sum(val_losses) / len(val_losses) if val_losses else 0
-
-    avg_val_loss = val_loss / len(val_loader)
-    print(f"Epoch {epoch}/5: Validation Loss: {avg_val_loss}")
-
-    if avg_val_loss < best_val_loss:
-        save_best_model(epoch, avg_val_loss, model)
-
-def process_validation(boxes, det_preds, labels, device):
-    boxes, det_preds, labels = boxes.to(device), det_preds.to(device), labels.to(device)
-    matches, matched_iou_scores = hungarian_matching(boxes, det_preds)
-    regression_loss = (1 - matched_iou_scores).mean()
-    return regression_loss
-
-def save_best_model(epoch, avg_val_loss, model):
-    best_val_loss = avg_val_loss
-    best_model_file = f"best_epoch_{epoch}.pth"
+def save_best_model(epoch, model):
+    #best_val_loss = avg_val_loss
+    best_model_file = f"best.pth"
     torch.save(model.state_dict(), best_model_file)
-    print(f"Model saved to {best_model_file} with Validation Loss: {avg_val_loss}")
+    #print(f"Model saved to {best_model_file} with Validation Loss: {avg_val_loss}")
 
 if __name__ == "__main__":
 
@@ -184,9 +202,9 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # Hyperparameters
-    num_epochs = 5
-    learning_rate = 0.001
-    batch_size = 10
+    num_epochs = 500
+    learning_rate = 0.0001
+    batch_size = 8
     num_classes = 3
     max_images = 10
     num_boxes = 3
@@ -207,10 +225,8 @@ if __name__ == "__main__":
 
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
 
-    for epoch in range(5):
-        avg_epoch_loss = train_one_epoch(epoch, train_loader, model, optimizer, device, new_w, new_h)
-        print(f"Epoch {epoch}/5: Loss: {avg_epoch_loss}")
-
+    for epoch in range(num_epochs):
+        train_one_epoch(epoch, train_loader, model, optimizer, device, new_w, new_h)
         validate_model(epoch, val_loader, model, device, best_val_loss)
 
     print('Training and validation completed.')

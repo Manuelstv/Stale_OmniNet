@@ -136,8 +136,8 @@ def validate_model(epoch, val_loader, model, device, best_val_loss):
                 
                 matched_iou_scores = iou_scores[gt_indices, pred_indices]
                 iou_loss = (1 - matched_iou_scores).mean()
-                n=i
-                save_images(boxes, det_preds, new_w, new_h, n, images)
+                #n=i
+                #save_images(boxes, det_preds, new_w, new_h, n, images)
                 
             total_val_loss += iou_loss.item()
 
@@ -186,11 +186,11 @@ if __name__ == "__main__":
     num_epochs = 500
     learning_rate = 0.001
     batch_size = 8
-    num_classes = 3
-    max_images = 10
-    num_boxes = 3
+    num_classes = 1
+    max_images = 800
+    num_boxes = 30
     best_val_loss = float('inf')
-    new_w, new_h = 300,300
+    new_w, new_h = 600,300
 
     # Initialize dataset and dataloader
     train_dataset = PascalVOCDataset(split='TRAIN', keep_difficult=False, max_images=max_images, new_w = new_w, new_h = new_h)
@@ -200,7 +200,6 @@ if __name__ == "__main__":
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=True, collate_fn=train_dataset.collate_fn)
 
     model = SimpleObjectDetector(num_boxes=num_boxes, num_classes=num_classes).to(device)
-    #model.fc1.apply(init_weights)
     model.det_head.apply(init_weights)
 
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)

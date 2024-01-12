@@ -91,7 +91,9 @@ def init_weights(m):
 
 def train_one_epoch(epoch, train_loader, model, optimizer, device, new_w, new_h):
     model.train()
-    total_loss = 0
+    total_loss = torch.tensor(0.0, device=device, requires_grad=True)
+    avg_epoch_loss = 0
+    total_matches =0
 
     for i, (images, boxes_list, labels_list, confidences_list) in enumerate(train_loader):
         images = images.to(device)
@@ -99,20 +101,23 @@ def train_one_epoch(epoch, train_loader, model, optimizer, device, new_w, new_h)
         detection_preds = model(images)
 
         batch_loss = 0
+        total_matches = 0
         for boxes, labels, det_preds in process_batches(boxes_list, labels_list, detection_preds, device, new_w, new_h, epoch, i, images):
             matches, iou_scores = hungarian_matching(boxes, det_preds)
+            if len(matches) > 0:
+                matched_iou_scores = iou_scores[[match[0] for match in matches], [match[1] for match in matches]]
+                batch_loss += (1 - matched_iou_scores).mean()
+                total_matches += len(matches)
 
-            # Compute IoU loss for matched pairs
-            matched_iou_scores = iou_scores[[match[0] for match in matches], [match[1] for match in matches]]
-            batch_loss += (1 - matched_iou_scores).mean()  # Negative IoU for minimization
+        if total_matches > 0:
+            batch_loss /= total_matches
 
         batch_loss.backward()
         optimizer.step()
 
-        total_loss += batch_loss.item()
+        total_loss = total_loss.item() + batch_loss.item()
 
-    avg_train_loss = total_loss / len(train_loader)
-    print(f"Epoch {epoch}: Train Loss: {avg_train_loss}")
+    print(f"Epoch {epoch}: Train Loss: {total_loss}")
 
 
 def validate_model(epoch, val_loader, model, device, best_val_loss):

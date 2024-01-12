@@ -97,6 +97,85 @@ def init_weights(m):
         if m.bias is not None:
             init.zeros_(m.bias)
 
+def train_one_epoch(epoch, train_loader, model, optimizer, device, new_w, new_h):
+    model.train()
+    total_loss = 0
+    total_matches = 0
+
+    for i, (images, boxes_list, labels_list, confidences_list) in enumerate(train_loader):
+        images, losses, n = images.to(device), [], 0
+        optimizer.zero_grad()
+        detection_preds = model(images)
+
+        for boxes, labels, det_preds in process_batches(boxes_list, labels_list, detection_preds, device, new_w, new_h, epoch, n, images):
+            matches, matched_iou_scores = hungarian_matching(boxes, det_preds)
+            regression_loss = (1 - matched_iou_scores).mean()
+            losses.append(regression_loss)
+            total_matches += len(matches)
+
+        update_model(losses, total_matches, total_loss, optimizer)
+
+    return total_loss / len(train_loader)
+
+def process_batches(boxes_list, labels_list, detection_preds, device, new_w, new_h, epoch, n, images):
+    for boxes, labels, det_preds in zip(boxes_list, labels_list, detection_preds):
+        boxes, det_preds, labels = boxes.to(device), det_preds.to(device), labels.to(device)
+        save_images(epoch, boxes, det_preds, new_w, new_h, n, images)
+        n += 1
+        yield boxes, labels, det_preds
+
+def save_images(epoch, boxes, det_preds, new_w, new_h, n, images):
+    if epoch > 0 and epoch % 100 == 0:
+        img1 = images[n].mul(255).clamp(0, 255).permute(1, 2, 0).cpu().numpy().astype(np.uint8).copy()
+        draw_boxes(img1, boxes, (0, 255, 0), new_w, new_h)
+        draw_boxes(img1, det_preds, (255, 0, 0), new_w, new_h)
+        cv2.imwrite(f'/home/mstveras/images/img{n}.jpg', img1)
+
+def draw_boxes(image, boxes, color, new_w, new_h):
+    for box in boxes:
+        x_min, y_min, x_max, y_max = [int(box[i] * new_w if i % 2 == 0 else box[i] * new_h) for i in range(4)]
+        cv2.rectangle(image, (x_min, y_min), (x_max, y_max), color)
+
+def update_model(losses, total_matches, total_loss, optimizer):
+    if total_matches > 0:
+        avg_regression_loss = sum(losses) / total_matches
+        avg_regression_loss.backward()
+        optimizer.step()
+        total_loss += avg_regression_loss.item()
+    else:
+        print('No matches found, not backpropagating.')
+
+def validate_model(epoch, val_loader, model, device, best_val_loss):
+    model.eval()
+    val_loss = 0
+    with torch.no_grad():
+        for images, boxes_list, labels_list, confidences_list in val_loader:
+            images = images.to(device)
+            detection_preds = model(images)
+
+            val_losses = [process_validation(boxes, det_preds, labels, device) 
+                          for boxes, labels, det_preds in zip(boxes_list, labels_list, detection_preds)]
+
+            val_loss += sum(val_losses) / len(val_losses) if val_losses else 0
+
+    avg_val_loss = val_loss / len(val_loader)
+    print(f"Epoch {epoch}/5: Validation Loss: {avg_val_loss}")
+
+    if avg_val_loss < best_val_loss:
+        save_best_model(epoch, avg_val_loss, model)
+
+def process_validation(boxes, det_preds, labels, device):
+    boxes, det_preds, labels = boxes.to(device), det_preds.to(device), labels.to(device)
+    matches, matched_iou_scores = hungarian_matching(boxes, det_preds)
+    regression_loss = (1 - matched_iou_scores).mean()
+    return regression_loss
+
+def save_best_model(epoch, avg_val_loss, model):
+    best_val_loss = avg_val_loss
+    best_model_file = f"best_epoch_{epoch}.pth"
+    torch.save(model.state_dict(), best_model_file)
+    print(f"Model saved to {best_model_file} with Validation Loss: {avg_val_loss}")
+
 if __name__ == "__main__":
 
     torch.cuda.empty_cache()
@@ -106,7 +185,7 @@ if __name__ == "__main__":
 
     # Hyperparameters
     num_epochs = 5
-    learning_rate = 0.0001
+    learning_rate = 0.001
     batch_size = 10
     num_classes = 3
     max_images = 10
@@ -128,89 +207,10 @@ if __name__ == "__main__":
 
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
 
-    for epoch in range(num_epochs):
-        model.train()
-        total_loss = 0
-        total_matches = 0
-        total_regression_loss = torch.tensor(0.0, device=device, requires_grad=True)
+    for epoch in range(5):
+        avg_epoch_loss = train_one_epoch(epoch, train_loader, model, optimizer, device, new_w, new_h)
+        print(f"Epoch {epoch}/5: Loss: {avg_epoch_loss}")
 
-        for i, (images, boxes_list, labels_list, confidences_list) in enumerate(train_loader):
-            images = images.to(device)
-            optimizer.zero_grad()
-            detection_preds = model(images)
-            losses = []
-            n = 0
-
-            for boxes, labels, det_preds in zip(boxes_list, labels_list, detection_preds):
-                boxes = boxes.to(device)
-                det_preds = det_preds.to(device)     
-                labels = labels.to(device)
-                matches, matched_iou_scores = hungarian_matching(boxes, det_preds)
-                regression_loss = (1 - matched_iou_scores).mean()
-                losses.append(regression_loss)
-                total_matches += len(matches)
-                
-                #salvando images de 10 em 10 épocas
-                if epoch>0 and epoch%100==0:
-                #if True:
-                    #pass
-                    img1 = images[n].mul(255).clamp(0, 255).permute(1, 2, 0).cpu().numpy().astype(np.uint8).copy()
-                    #cv2.imwrite('branco2.jpg', img1)
-
-                    for box in boxes:
-                        x_min, y_min, x_max, y_max = int(box[0]*new_w), int(box[1]*new_h), int(box[2]*new_w), int(box[3]*new_h)
-                        #images = np.ascontiguousarray(images, dtype = np.uint8)
-                        cv2.rectangle(img1, (x_min, y_min), (x_max, y_max), (0,255,0))
-
-                    for box in det_preds:
-                        x_min, y_min, x_max, y_max = int(box[0]*new_w), int(box[1]*new_h), int(box[2]*new_w), int(box[3]*new_h)
-                        cv2.rectangle(img1, (x_min, y_min), (x_max, y_max), (255,0,0))
-                    cv2.imwrite(f'/home/mstveras/images/img{n}.jpg', img1)
-
-                    #img = process_and_save_image_planar(img1, boxes.cpu().detach().numpy(), (0,255,0), f'/home/mstveras/images/img{n}.jpg')
-                    #img = process_and_save_image_planar(img, det_preds.cpu().detach().numpy(), (255,0,0), f'/home/mstveras/images/img2_{n}.jpg')
-                
-                    n+=1
-
-            if total_matches > 0:
-                avg_regression_loss = sum(losses) / total_matches
-                avg_regression_loss.backward()  # Backpropagate here
-                optimizer.step()  # Update the weights once per batch
-                total_loss += avg_regression_loss.item()
-            else:
-                print('No matches found, not backpropagating.')
-
-        avg_epoch_loss = total_loss / len(train_loader)
-        print(f"Epoch {epoch}/{num_epochs}: Loss: {avg_epoch_loss}")
-
-        # Validation Phase
-        model.eval()  # Set the model to evaluation mode
-        val_loss = 0
-        with torch.no_grad():  # Disable gradient computation
-            for images, boxes_list, labels_list, confidences_list in val_loader:
-                images = images.to(device)
-                # Forward pass for validation
-                detection_preds = model(images)
-                val_losses = []
-                for boxes, labels, det_preds in zip(boxes_list, labels_list, detection_preds):
-                    boxes = boxes.to(device)
-                    det_preds = det_preds.to(device)
-                    labels = labels.to(device)
-                    matches, matched_iou_scores = hungarian_matching(boxes, det_preds)
-                    regression_loss = (1 - matched_iou_scores).mean()
-                    val_losses.append(regression_loss)
-                if len(matches) > 0:
-                    avg_val_regression_loss = sum(val_losses) / len(matches)
-                    val_loss += avg_val_regression_loss.item()
-
-        avg_val_loss = val_loss / len(val_loader)
-        print(f"Epoch {epoch}/{num_epochs}: Validation Loss: {avg_val_loss}")
-
-        # Save the model if it has the best validation loss so far
-        if avg_val_loss < best_val_loss:
-            best_val_loss = avg_val_loss
-            best_model_file = f"best_epoch_{epoch}.pth"
-            torch.save(model.state_dict(), best_model_file)
-            print(f"Model saved to {best_model_file} with Validation Loss: {avg_val_loss}")
+        validate_model(epoch, val_loader, model, device, best_val_loss)
 
     print('Training and validation completed.')

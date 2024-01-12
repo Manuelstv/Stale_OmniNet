@@ -143,7 +143,7 @@ class SimpleObjectDetector(nn.Module):
         #x = self.pool(x)
 
         # Flatten the features for the fully connected layer
-        print(x.size())
+        #print(x.size())
         x = x.view(x.size(0), -1)
 
         x = F.relu(self.fc1(x))

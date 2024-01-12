@@ -112,24 +112,18 @@ def train_one_epoch(epoch, train_loader, model, optimizer, device, new_w, new_h)
         optimizer.zero_grad()
         detection_preds = model(images)
 
+        batch_loss = 0
         for boxes, labels, det_preds in process_batches(boxes_list, labels_list, detection_preds, device, new_w, new_h, epoch, i, images):
             matches, iou_scores = hungarian_matching(boxes, det_preds)
 
-            # Compute IoU loss for matched pairs (example using a simple IoU loss)
-            gt_indices = [match[0] for match in matches]
-            pred_indices = [match[1] for match in matches]
+            # Compute IoU loss for matched pairs
+            matched_iou_scores = iou_scores[[match[0] for match in matches], [match[1] for match in matches]]
+            batch_loss += (1 - matched_iou_scores).mean()  # Negative IoU for minimization
 
-            gt_indices = torch.tensor(gt_indices, dtype=torch.long, device=iou_scores.device)
-            pred_indices = torch.tensor(pred_indices, dtype=torch.long, device=iou_scores.device)
-            
-            matched_iou_scores = iou_scores[gt_indices, pred_indices]
-            iou_loss = (1-matched_iou_scores).mean()  # Negative IoU for minimization
+        batch_loss.backward()
+        optimizer.step()
 
-            # Backpropagate the IoU loss
-            iou_loss.backward()
-            optimizer.step()
-
-            total_loss += iou_loss.item()
+        total_loss += batch_loss.item()
 
     avg_train_loss = total_loss / len(train_loader)
     print(f"Epoch {epoch}: Train Loss: {avg_train_loss}")
@@ -138,6 +132,7 @@ def train_one_epoch(epoch, train_loader, model, optimizer, device, new_w, new_h)
 def validate_model(epoch, val_loader, model, device, best_val_loss):
     model.eval()
     total_val_loss = 0
+    total_matches=0
 
     with torch.no_grad():
         for i, (images, boxes_list, labels_list, confidences_list) in enumerate(val_loader):
@@ -156,9 +151,8 @@ def validate_model(epoch, val_loader, model, device, best_val_loss):
                 matched_iou_scores = iou_scores[gt_indices, pred_indices]
                 iou_loss = (1 - matched_iou_scores).mean()
                 
-                total_val_loss += iou_loss.item()
+            total_val_loss += iou_loss.item()
 
-    print(len(val_loader))
     avg_val_loss = total_val_loss / len(val_loader)
     print(f"Epoch {epoch}: Validation Loss: {avg_val_loss}")
 
@@ -203,7 +197,7 @@ if __name__ == "__main__":
 
     # Hyperparameters
     num_epochs = 500
-    learning_rate = 0.0001
+    learning_rate = 0.001
     batch_size = 8
     num_classes = 3
     max_images = 10

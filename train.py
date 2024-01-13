@@ -102,10 +102,13 @@ def train_one_epoch(epoch, train_loader, model, optimizer, device, new_w, new_h)
         batch_loss = torch.tensor(0.0, device=device, requires_grad=True)
 
         for boxes, labels, det_preds in process_batches(boxes_list, labels_list, detection_preds, device, new_w, new_h, epoch, i, images):
+            boxes, det_preds
             matches, iou_scores = hungarian_matching(boxes, det_preds)
             if len(matches) > 0:
                 matched_iou_scores = iou_scores[[match[0] for match in matches], [match[1] for match in matches]]
-                batch_loss = batch_loss + (1 - matched_iou_scores).mean()
+                #batch_loss = batch_loss + (1 - matched_iou_scores).mean()
+                mse_loss = F.mse_loss(det_preds, boxes)
+                batch_loss += mse_loss
                 total_matches += len(matches)
 
         batch_loss.backward()
@@ -116,6 +119,17 @@ def train_one_epoch(epoch, train_loader, model, optimizer, device, new_w, new_h)
     avg_train_loss = total_loss / len(train_loader) if total_matches > 0 else total_loss
 
     print(f"Epoch {epoch}: Train Loss: {avg_train_loss}")
+
+def custom_loss_function(det_preds, boxes):
+    matches, _ = hungarian_matching(boxes, det_preds)
+    total_loss = 0.0
+    for gt_idx, pred_idx in matches:
+        gt_box = boxes[gt_idx]
+        pred_box = det_preds[pred_idx]
+        # Compute the loss for this pair (e.g., MSE)
+        pair_loss = F.mse_loss(pred_box, gt_box)
+        total_loss += pair_loss
+    return total_loss / len(matches) if matches else torch.tensor(0.0)
 
 def train_one_epoch_mse(epoch, train_loader, model, optimizer, device, new_w, new_h):
     model.train()
@@ -129,7 +143,8 @@ def train_one_epoch_mse(epoch, train_loader, model, optimizer, device, new_w, ne
         batch_loss = torch.tensor(0.0, device=device)
 
         for boxes, labels, det_preds in process_batches(boxes_list, labels_list, detection_preds, device, new_w, new_h, epoch, i, images):
-            mse_loss = F.mse_loss(det_preds, boxes)
+            #print(boxes.shape, det_preds.shape)
+            mse_loss = custom_loss_function(det_preds, boxes)
             batch_loss += mse_loss
 
         batch_loss.backward()
@@ -160,8 +175,8 @@ def validate_model(epoch, val_loader, model, device, best_val_loss):
                 
                 matched_iou_scores = iou_scores[gt_indices, pred_indices]
                 iou_loss = (1 - matched_iou_scores).mean()
-                #n=i
-                #save_images(boxes, det_preds, new_w, new_h, n, images)
+                n =0
+                save_images(boxes, det_preds, new_w, new_h, n, images)
                 
             total_val_loss += iou_loss.item()
 
@@ -211,8 +226,8 @@ if __name__ == "__main__":
     learning_rate = 0.0001
     batch_size = 8
     num_classes = 1
-    max_images = 8
-    num_boxes = 1
+    max_images = 800
+    num_boxes = 3
     best_val_loss = float('inf')
     new_w, new_h = 600,300
 
@@ -220,8 +235,8 @@ if __name__ == "__main__":
     train_dataset = PascalVOCDataset(split='TRAIN', keep_difficult=False, max_images=max_images, new_w = new_w, new_h = new_h)
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, collate_fn=train_dataset.collate_fn)
 
-    #val_dataset = PascalVOCDataset(split='VAL', keep_difficult=False, max_images=max_images, new_w = new_w, new_h = new_h)
-    #val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=True, collate_fn=train_dataset.collate_fn)
+    val_dataset = PascalVOCDataset(split='VAL', keep_difficult=False, max_images=max_images, new_w = new_w, new_h = new_h)
+    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=True, collate_fn=train_dataset.collate_fn)
 
     model = SimpleObjectDetector(num_boxes=num_boxes, num_classes=num_classes).to(device)
     model.det_head.apply(init_weights)
@@ -230,6 +245,6 @@ if __name__ == "__main__":
 
     for epoch in range(num_epochs):
         train_one_epoch_mse(epoch, train_loader, model, optimizer, device, new_w, new_h)
-        #validate_model(epoch, val_loader, model, device, best_val_loss)
+        validate_model(epoch, val_loader, model, device, best_val_loss)
 
     print('Training and validation completed.')

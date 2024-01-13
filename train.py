@@ -92,33 +92,52 @@ def init_weights(m):
 def train_one_epoch(epoch, train_loader, model, optimizer, device, new_w, new_h):
     model.train()
     total_loss = torch.tensor(0.0, device=device, requires_grad=True)
-    avg_epoch_loss = 0
-    total_matches =0
+    total_matches = 0
 
     for i, (images, boxes_list, labels_list, confidences_list) in enumerate(train_loader):
         images = images.to(device)
         optimizer.zero_grad()
         detection_preds = model(images)
 
-        batch_loss = 0
-        total_matches = 0
+        batch_loss = torch.tensor(0.0, device=device, requires_grad=True)
+
         for boxes, labels, det_preds in process_batches(boxes_list, labels_list, detection_preds, device, new_w, new_h, epoch, i, images):
             matches, iou_scores = hungarian_matching(boxes, det_preds)
             if len(matches) > 0:
                 matched_iou_scores = iou_scores[[match[0] for match in matches], [match[1] for match in matches]]
-                batch_loss += (1 - matched_iou_scores).mean()
+                batch_loss = batch_loss + (1 - matched_iou_scores).mean()
                 total_matches += len(matches)
-
-        if total_matches > 0:
-            batch_loss /= total_matches
 
         batch_loss.backward()
         optimizer.step()
 
         total_loss = total_loss + batch_loss.item()
 
-    print(f"Epoch {epoch}: Train Loss: {total_loss}")
+    avg_train_loss = total_loss / len(train_loader) if total_matches > 0 else total_loss
 
+    print(f"Epoch {epoch}: Train Loss: {avg_train_loss}")
+
+def train_one_epoch_mse(epoch, train_loader, model, optimizer, device, new_w, new_h):
+    model.train()
+    total_loss = 0.0
+
+    for i, (images, boxes_list, labels_list, confidences_list) in enumerate(train_loader):
+        images = images.to(device)
+        optimizer.zero_grad()
+        detection_preds = model(images)
+
+        batch_loss = torch.tensor(0.0, device=device)
+
+        for boxes, labels, det_preds in process_batches(boxes_list, labels_list, detection_preds, device, new_w, new_h, epoch, i, images):
+            mse_loss = F.mse_loss(det_preds, boxes)
+            batch_loss += mse_loss
+
+        batch_loss.backward()
+        optimizer.step()
+        total_loss += batch_loss.item()
+
+    avg_train_loss = total_loss / len(train_loader)
+    print(f"Epoch {epoch}: Train Loss: {avg_train_loss}")
 
 def validate_model(epoch, val_loader, model, device, best_val_loss):
     model.eval()
@@ -189,11 +208,11 @@ if __name__ == "__main__":
 
     # Hyperparameters
     num_epochs = 500
-    learning_rate = 0.001
+    learning_rate = 0.0001
     batch_size = 8
     num_classes = 1
     max_images = 8
-    num_boxes = 10
+    num_boxes = 1
     best_val_loss = float('inf')
     new_w, new_h = 600,300
 
@@ -210,7 +229,7 @@ if __name__ == "__main__":
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
 
     for epoch in range(num_epochs):
-        train_one_epoch(epoch, train_loader, model, optimizer, device, new_w, new_h)
+        train_one_epoch_mse(epoch, train_loader, model, optimizer, device, new_w, new_h)
         #validate_model(epoch, val_loader, model, device, best_val_loss)
 
     print('Training and validation completed.')

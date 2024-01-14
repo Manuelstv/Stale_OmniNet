@@ -127,9 +127,62 @@ def custom_loss_function(det_preds, boxes):
         gt_box = boxes[gt_idx]
         pred_box = det_preds[pred_idx]
         # Compute the loss for this pair (e.g., MSE)
-        pair_loss = F.mse_loss(pred_box, gt_box)
+        #pair_loss = F.mse_loss(pred_box, gt_box)
+        pair_loss = giou_loss(pred_box, gt_box, new_w = 600, new_h  =300)
         total_loss += pair_loss
     return total_loss / len(matches) if matches else torch.tensor(0.0)
+
+
+def giou_loss(pred_boxes_in, gt_boxes_in, new_w, new_h):
+    # Ensure the boxes are (x_min, y_min, x_max, y_max)
+    assert pred_boxes_in.shape == gt_boxes_in.shape
+
+    pred_boxes_in = pred_boxes_in.unsqueeze(0)
+    gt_boxes_in = gt_boxes_in.unsqueeze(0)
+    
+    pred_boxes = pred_boxes_in.clone()
+    gt_boxes = gt_boxes_in.clone()
+
+    gt_boxes[:, 0] = gt_boxes_in[:, 0]*new_w
+    gt_boxes[:, 1] = gt_boxes_in[:, 1]*new_h
+    gt_boxes[:, 2] = gt_boxes_in[:, 2]*new_w
+    gt_boxes[:, 3] = gt_boxes_in[:, 3]*new_h
+
+    gt_boxes = gt_boxes.to(torch.int)
+
+    pred_boxes[:, 0] = int(pred_boxes_in[:, 0]*new_w)
+    pred_boxes[:, 1] = int(pred_boxes_in[:, 1]*new_h)
+    pred_boxes[:, 2] = int(pred_boxes_in[:, 2]*new_w)
+    pred_boxes[:, 3] = int(pred_boxes_in[:, 3]*new_h)
+
+    #pred_boxes = pred_boxes.to(torch.int)
+
+    # Intersection
+    inter_xmin = torch.max(pred_boxes[:, 0], gt_boxes[:, 0])
+    inter_ymin = torch.max(pred_boxes[:, 1], gt_boxes[:, 1])
+    inter_xmax = torch.min(pred_boxes[:, 2], gt_boxes[:, 2])
+    inter_ymax = torch.min(pred_boxes[:, 3], gt_boxes[:, 3])
+    
+    inter_area = torch.clamp(inter_xmax - inter_xmin, min=0) * torch.clamp(inter_ymax - inter_ymin, min=0)
+
+    # Union
+    pred_area = (pred_boxes[:, 2] - pred_boxes[:, 0]) * (pred_boxes[:, 3] - pred_boxes[:, 1])
+    gt_area = (gt_boxes[:, 2] - gt_boxes[:, 0]) * (gt_boxes[:, 3] - gt_boxes[:, 1])
+    union_area = pred_area + gt_area - inter_area
+
+    # Enclosing box
+    enc_xmin = torch.min(pred_boxes[:, 0], gt_boxes[:, 0])
+    enc_ymin = torch.min(pred_boxes[:, 1], gt_boxes[:, 1])
+    enc_xmax = torch.max(pred_boxes[:, 2], gt_boxes[:, 2])
+    enc_ymax = torch.max(pred_boxes[:, 3], gt_boxes[:, 3])
+    enc_area = (enc_xmax - enc_xmin) * (enc_ymax - enc_ymin)
+
+    # IoU and GIoU
+    iou = inter_area / union_area
+    giou = iou - (enc_area - union_area) / enc_area
+    giou_loss = 1 - giou  # GIoU loss
+
+    return giou_loss.mean()
 
 def train_one_epoch_mse(epoch, train_loader, model, optimizer, device, new_w, new_h):
     model.train()
@@ -143,9 +196,10 @@ def train_one_epoch_mse(epoch, train_loader, model, optimizer, device, new_w, ne
         batch_loss = torch.tensor(0.0, device=device)
 
         for boxes, labels, det_preds in process_batches(boxes_list, labels_list, detection_preds, device, new_w, new_h, epoch, i, images):
-            #print(boxes.shape, det_preds.shape)
             mse_loss = custom_loss_function(det_preds, boxes)
             batch_loss += mse_loss
+        
+        save_images(boxes, det_preds, new_w, new_h, 0, images)
 
         batch_loss.backward()
         optimizer.step()
@@ -153,6 +207,28 @@ def train_one_epoch_mse(epoch, train_loader, model, optimizer, device, new_w, ne
 
     avg_train_loss = total_loss / len(train_loader)
     print(f"Epoch {epoch}: Train Loss: {avg_train_loss}")
+
+
+def validate_one_epoch_mse(epoch, val_loader, model, device, new_w, new_h):
+    model.eval()
+    total_val_loss = 0.0
+
+    with torch.no_grad():
+        for i, (images, boxes_list, labels_list, confidences_list) in enumerate(val_loader):
+            images = images.to(device)
+            detection_preds = model(images)
+
+            batch_val_loss = torch.tensor(0.0, device=device)
+
+            for boxes, labels, det_preds in process_batches(boxes_list, labels_list, detection_preds, device, new_w, new_h, epoch, i, images):
+                mse_loss = custom_loss_function(det_preds, boxes)
+                batch_val_loss += mse_loss
+
+            total_val_loss += batch_val_loss.item()
+
+    avg_val_loss = total_val_loss / len(val_loader)
+    print(f"Epoch {epoch}: Validation Loss: {avg_val_loss}")
+
 
 def validate_model(epoch, val_loader, model, device, best_val_loss):
     model.eval()
@@ -175,7 +251,7 @@ def validate_model(epoch, val_loader, model, device, best_val_loss):
                 
                 matched_iou_scores = iou_scores[gt_indices, pred_indices]
                 iou_loss = (1 - matched_iou_scores).mean()
-                n =0
+                n = 0
                 save_images(boxes, det_preds, new_w, new_h, n, images)
                 
             total_val_loss += iou_loss.item()
@@ -193,7 +269,7 @@ def validate_model(epoch, val_loader, model, device, best_val_loss):
 def process_batches(boxes_list, labels_list, detection_preds, device, new_w, new_h, epoch, n, images):
     for boxes, labels, det_preds in zip(boxes_list, labels_list, detection_preds):
         boxes, det_preds, labels = boxes.to(device), det_preds.to(device), labels.to(device)
-        #save_images(boxes, det_preds, new_w, new_h, n, images)
+        save_images(boxes, det_preds, new_w, new_h, 0, images)
         n += 1
         yield boxes, labels, det_preds
 
@@ -224,12 +300,12 @@ if __name__ == "__main__":
     # Hyperparameters
     num_epochs = 500
     learning_rate = 0.0001
-    batch_size = 8
+    batch_size = 1
     num_classes = 1
     max_images = 800
     num_boxes = 3
     best_val_loss = float('inf')
-    new_w, new_h = 600,300
+    new_w, new_h = 600, 300
 
     # Initialize dataset and dataloader
     train_dataset = PascalVOCDataset(split='TRAIN', keep_difficult=False, max_images=max_images, new_w = new_w, new_h = new_h)
@@ -245,6 +321,6 @@ if __name__ == "__main__":
 
     for epoch in range(num_epochs):
         train_one_epoch_mse(epoch, train_loader, model, optimizer, device, new_w, new_h)
-        validate_model(epoch, val_loader, model, device, best_val_loss)
+        validate_one_epoch_mse(epoch, val_loader, model, device, new_w, new_h)
 
     print('Training and validation completed.')

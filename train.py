@@ -124,8 +124,8 @@ if __name__ == "__main__":
     train_dataset = PascalVOCDataset(split='TRAIN', keep_difficult=False, max_images=max_images, new_w = new_w, new_h = new_h)
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, collate_fn=train_dataset.collate_fn)
 
-    val_dataset = PascalVOCDataset(split='VAL', keep_difficult=False, max_images=max_images, new_w = new_w, new_h = new_h)
-    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=True, collate_fn=train_dataset.collate_fn)
+    #val_dataset = PascalVOCDataset(split='VAL', keep_difficult=False, max_images=max_images, new_w = new_w, new_h = new_h)
+    #val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=True, collate_fn=train_dataset.collate_fn)
 
     model = SimpleObjectDetector(num_boxes=num_boxes, num_classes=num_classes).to(device)
     model.det_head.apply(init_weights)

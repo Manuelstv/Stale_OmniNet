@@ -20,7 +20,7 @@ def fov_iou_batch(gt_boxes, pred_boxes, new_w, new_h):
     for Bg in gt_boxes:
         row = []
         for Bd in pred_boxes:
-            row.append(iou(Bg, Bd, new_w, new_h))
+            row.append(fov_iou(Bg, Bd))
         iou_values.append(row)
 
     # Convert list of lists to a tensor

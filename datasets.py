@@ -19,12 +19,12 @@ class PascalVOCDataset(Dataset):
         self.new_w = new_w
 
         # Base directory for datasets
-        base_dir = '/home/mstveras/newdet/tomato'
+        base_dir = '/home/mstveras/ssd-360/dataset'
 
         # Assign directory based on split
         if self.split == 'TRAIN':
-            self.image_dir = os.path.join(base_dir, 'train')
-            self.annotation_dir = os.path.join(base_dir, 'train')
+            self.image_dir = os.path.join(base_dir, 'train/images')
+            self.annotation_dir = os.path.join(base_dir, 'train/labels')
         elif self.split == 'VAL':
             self.image_dir = os.path.join(base_dir, 'val')
             self.annotation_dir = os.path.join(base_dir, 'val')
@@ -34,7 +34,7 @@ class PascalVOCDataset(Dataset):
         self.split = split.upper()
         
         # Load all image files, sorting them to ensure that they are aligned
-        self.image_filenames = [os.path.join(self.image_dir, f) for f in sorted(os.listdir(self.image_dir)) if f.endswith('.png')][:max_images]
+        self.image_filenames = [os.path.join(self.image_dir, f) for f in sorted(os.listdir(self.image_dir)) if f.endswith('.jpg')][:max_images]
         self.annotation_filenames = [os.path.join(self.annotation_dir, f) for f in sorted(os.listdir(self.annotation_dir)) if f.endswith('.xml')][:max_images]
         
         assert len(self.image_filenames) == len(self.annotation_filenames)
@@ -62,11 +62,45 @@ class PascalVOCDataset(Dataset):
         difficulties = []
 
         label_mapping = {
-        'tomato': 0}
-        #label_mapping = {
-        #'banana': 0,
-        #'orange': 1,
-        #'apple': 2}
+        'airconditioner': 0,
+        'backpack': 1,
+        'bathtub': 2,
+        'bed': 3,
+        'board': 4,
+        'book': 5,
+        'bottle': 6,
+        'bowl': 7,
+        'cabinet': 8,
+        'chair': 9,
+        'clock': 10,
+        'computer': 11,
+        'cup': 12,
+        'door': 13,
+        'fan': 14,
+        'fireplace': 15,
+        'heater': 16,
+        'keyboard': 17,
+        'light': 18,
+        'microwave': 19,
+        'mirror': 20,
+        'mouse': 21,
+        'oven': 22,
+        'person': 23,
+        'phone': 24,
+        'picture': 25,
+        'potted plant': 26,
+        'refrigerator': 27,
+        'sink': 28,
+        'sofa': 29,
+        'table': 30,
+        'toilet': 31,
+        'tv': 32,
+        'vase': 33,
+        'washer': 34,
+        'window': 35,
+        'wine glass': 36}
+
+
 
         h, w = image.shape[:2]
 
@@ -90,10 +124,10 @@ class PascalVOCDataset(Dataset):
                 bbox = obj.find('bndbox')
 
                 # Normalize pixel coordinates of center to [-1, 1]
-                xmin = int(bbox.find('xmin').text)/w
-                ymin = int(bbox.find('ymin').text)/h
-                xmax = (int(bbox.find('xmax').text))/w
-                ymax = (int(bbox.find('ymax').text))/h
+                xmin = 2*int(bbox.find('x_center').text)/w-1
+                ymin = 2*int(bbox.find('y_center').text)/h-1
+                xmax = (float(bbox.find('width').text))/90
+                ymax = (float(int(bbox.find('height').text)))/90
 
                 boxes.append([xmin,ymin,xmax,ymax])
                 labels.append(label_mapping[obj.find('name').text])

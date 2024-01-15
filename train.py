@@ -1,6 +1,3 @@
-import json
-import os
-
 import cv2
 import numpy as np
 import torch
@@ -8,70 +5,16 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.nn.init as init
 import torch.optim as optim
-from scipy.optimize import linear_sum_assignment
 from torch.utils.data import DataLoader
 
 from datasets import PascalVOCDataset
-from foviou import (deg2rad, fov_iou, fov_giou_loss, iou, angle2radian)
+from foviou import *
 from model import (SimpleObjectDetector, SimpleObjectDetectorMobile,
                    SimpleObjectDetectorResnet)
 from plot_tools import process_and_save_image, process_and_save_image_planar
 from sphiou import Sph
-from sph2pob import sph_iou_aligned
-
-
-def fov_iou_batch(gt_boxes, pred_boxes):
-    """
-    Calculate the Intersection over Union (IoU) for each pair of ground truth and predicted boxes.
-
-    Args:
-    - gt_boxes (Tensor): A tensor of ground truth bounding boxes.
-    - pred_boxes (Tensor): A tensor of predicted bounding boxes.
-
-    Returns:
-    - Tensor: A matrix of IoU values, where each element [i, j] is the IoU of the ith ground truth box and the jth predicted box.
-    """
-    # Initialize a tensor to store IoU values, on the same device as the input boxes
-    iou_values = []
-    for Bg in gt_boxes:
-        row = []
-        for Bd in pred_boxes:
-            row.append(iou(Bg, Bd))
-        iou_values.append(row)
-
-    # Convert list of lists to a tensor
-    ious = torch.tensor(iou_values, device=gt_boxes.device, dtype=torch.float32)
-    return ious.requires_grad_()
-
-def hungarian_matching(gt_boxes_in, pred_boxes_in):
-    """
-    Perform Hungarian matching between ground truth and predicted boxes to find the best match based on IoU scores.
-
-    Args:
-    - gt_boxes_in (Tensor): A tensor of ground truth bounding boxes.
-    - pred_boxes_in (Tensor): A tensor of predicted bounding boxes.
-
-    Returns:
-    - list of tuples: Matched pairs of ground truth and predicted boxes.
-    - Tensor: IoU scores for the matched pairs.
-    """
-    # Compute the batch IoUs
-    gt_boxes = gt_boxes_in.clone().to(torch.float)
-    pred_boxes = pred_boxes_in.clone().to(torch.float)
-
-    iou_matrix = fov_iou_batch(gt_boxes, pred_boxes)
-
-    # Convert IoUs to cost
-    cost_matrix = 1 - iou_matrix.detach().cpu().numpy()
-
-    # Apply Hungarian matching
-    gt_indices, pred_indices = linear_sum_assignment(cost_matrix)
-
-    # Extract the matched pairs
-    matched_pairs = [(gt_indices[i], pred_indices[i]) for i in range(len(gt_indices))]
-
-
-    return matched_pairs, iou_matrix
+from losses import *
+from utils import *
 
 def init_weights(m):
     """
@@ -89,102 +32,27 @@ def init_weights(m):
         if m.bias is not None:
             nn.init.constant_(m.bias, 0)
 
-def train_one_epoch(epoch, train_loader, model, optimizer, device, new_w, new_h):
-    model.train()
-    total_loss = torch.tensor(0.0, device=device, requires_grad=True)
-    total_matches = 0
-
-    for i, (images, boxes_list, labels_list, confidences_list) in enumerate(train_loader):
-        images = images.to(device)
-        optimizer.zero_grad()
-        detection_preds = model(images)
-
-        batch_loss = torch.tensor(0.0, device=device, requires_grad=True)
-
-        for boxes, labels, det_preds in process_batches(boxes_list, labels_list, detection_preds, device, new_w, new_h, epoch, i, images):
-            boxes, det_preds
-            matches, iou_scores = hungarian_matching(boxes, det_preds)
-            if len(matches) > 0:
-                matched_iou_scores = iou_scores[[match[0] for match in matches], [match[1] for match in matches]]
-                #batch_loss = batch_loss + (1 - matched_iou_scores).mean()
-                mse_loss = F.mse_loss(det_preds, boxes)
-                batch_loss += mse_loss
-                total_matches += len(matches)
-
-        batch_loss.backward()
-        optimizer.step()
-
-        total_loss = total_loss + batch_loss.item()
-
-    avg_train_loss = total_loss / len(train_loader) if total_matches > 0 else total_loss
-
-    print(f"Epoch {epoch}: Train Loss: {avg_train_loss}")
-
-def custom_loss_function(det_preds, boxes):
-    matches, _ = hungarian_matching(boxes, det_preds)
-    total_loss = 0.0
-    for gt_idx, pred_idx in matches:
-        gt_box = boxes[gt_idx]
-        pred_box = det_preds[pred_idx]
-        # Compute the loss for this pair (e.g., MSE)
-        #pair_loss = F.mse_loss(pred_box, gt_box)
-        pair_loss = giou_loss(pred_box, gt_box, new_w = 600, new_h  =300)
-        total_loss += pair_loss
-    return total_loss / len(matches) if matches else torch.tensor(0.0)
-
-
-def giou_loss(pred_boxes_in, gt_boxes_in, new_w, new_h):
-    # Ensure the boxes are (x_min, y_min, x_max, y_max)
-    assert pred_boxes_in.shape == gt_boxes_in.shape
-
-    pred_boxes_in = pred_boxes_in.unsqueeze(0)
-    gt_boxes_in = gt_boxes_in.unsqueeze(0)
-    
-    pred_boxes = pred_boxes_in.clone()
-    gt_boxes = gt_boxes_in.clone()
-
-    gt_boxes[:, 0] = gt_boxes_in[:, 0]*new_w
-    gt_boxes[:, 1] = gt_boxes_in[:, 1]*new_h
-    gt_boxes[:, 2] = gt_boxes_in[:, 2]*new_w
-    gt_boxes[:, 3] = gt_boxes_in[:, 3]*new_h
-
-    gt_boxes = gt_boxes.to(torch.int)
-
-    pred_boxes[:, 0] = int(pred_boxes_in[:, 0]*new_w)
-    pred_boxes[:, 1] = int(pred_boxes_in[:, 1]*new_h)
-    pred_boxes[:, 2] = int(pred_boxes_in[:, 2]*new_w)
-    pred_boxes[:, 3] = int(pred_boxes_in[:, 3]*new_h)
-
-    #pred_boxes = pred_boxes.to(torch.int)
-
-    # Intersection
-    inter_xmin = torch.max(pred_boxes[:, 0], gt_boxes[:, 0])
-    inter_ymin = torch.max(pred_boxes[:, 1], gt_boxes[:, 1])
-    inter_xmax = torch.min(pred_boxes[:, 2], gt_boxes[:, 2])
-    inter_ymax = torch.min(pred_boxes[:, 3], gt_boxes[:, 3])
-    
-    inter_area = torch.clamp(inter_xmax - inter_xmin, min=0) * torch.clamp(inter_ymax - inter_ymin, min=0)
-
-    # Union
-    pred_area = (pred_boxes[:, 2] - pred_boxes[:, 0]) * (pred_boxes[:, 3] - pred_boxes[:, 1])
-    gt_area = (gt_boxes[:, 2] - gt_boxes[:, 0]) * (gt_boxes[:, 3] - gt_boxes[:, 1])
-    union_area = pred_area + gt_area - inter_area
-
-    # Enclosing box
-    enc_xmin = torch.min(pred_boxes[:, 0], gt_boxes[:, 0])
-    enc_ymin = torch.min(pred_boxes[:, 1], gt_boxes[:, 1])
-    enc_xmax = torch.max(pred_boxes[:, 2], gt_boxes[:, 2])
-    enc_ymax = torch.max(pred_boxes[:, 3], gt_boxes[:, 3])
-    enc_area = (enc_xmax - enc_xmin) * (enc_ymax - enc_ymin)
-
-    # IoU and GIoU
-    iou = inter_area / union_area
-    giou = iou - (enc_area - union_area) / enc_area
-    giou_loss = 1 - giou  # GIoU loss
-
-    return giou_loss.mean()
-
 def train_one_epoch_mse(epoch, train_loader, model, optimizer, device, new_w, new_h):
+    """
+    Train the model for one epoch using Mean Squared Error (MSE) as the loss function.
+
+    This function iterates over the training data loader, performs forward and backward
+    passes, and updates the model parameters. Additionally, it saves images for visualization
+    and calculates the average training loss for the epoch.
+
+    Parameters:
+    - epoch (int): The current epoch number.
+    - train_loader (DataLoader): The DataLoader object providing the training data.
+    - model (nn.Module): The neural network model being trained.
+    - optimizer (Optimizer): The optimizer used for updating model parameters.
+    - device (torch.device): The device (CPU/GPU) on which the computations are performed.
+    - new_w (int): The new width dimension for the image after processing.
+    - new_h (int): The new height dimension for the image after processing.
+
+    Returns:
+    - None
+    """
+
     model.train()
     total_loss = 0.0
 
@@ -196,7 +64,7 @@ def train_one_epoch_mse(epoch, train_loader, model, optimizer, device, new_w, ne
         batch_loss = torch.tensor(0.0, device=device)
 
         for boxes, labels, det_preds in process_batches(boxes_list, labels_list, detection_preds, device, new_w, new_h, epoch, i, images):
-            mse_loss = custom_loss_function(det_preds, boxes)
+            mse_loss = custom_loss_function(det_preds, boxes, new_w, new_h)
             batch_loss += mse_loss
         
         save_images(boxes, det_preds, new_w, new_h, 0, images)
@@ -221,74 +89,19 @@ def validate_one_epoch_mse(epoch, val_loader, model, device, new_w, new_h):
             batch_val_loss = torch.tensor(0.0, device=device)
 
             for boxes, labels, det_preds in process_batches(boxes_list, labels_list, detection_preds, device, new_w, new_h, epoch, i, images):
-                mse_loss = custom_loss_function(det_preds, boxes)
+                mse_loss = custom_loss_function(det_preds, boxes, new_w, new_h)
                 batch_val_loss += mse_loss
 
             total_val_loss += batch_val_loss.item()
 
     avg_val_loss = total_val_loss / len(val_loader)
-    print(f"Epoch {epoch}: Validation Loss: {avg_val_loss}")
-
-
-def validate_model(epoch, val_loader, model, device, best_val_loss):
-    model.eval()
-    total_val_loss = 0
-    total_matches=0
-
-    with torch.no_grad():
-        for i, (images, boxes_list, labels_list, confidences_list) in enumerate(val_loader):
-            images = images.to(device)
-            detection_preds = model(images)
-
-            for boxes, labels, det_preds in process_batches(boxes_list, labels_list, detection_preds, device, new_w, new_h, epoch, i, images):
-                matches, iou_scores = hungarian_matching(boxes, det_preds)
-                
-                gt_indices = [match[0] for match in matches]
-                pred_indices = [match[1] for match in matches]
-
-                gt_indices = torch.tensor(gt_indices, dtype=torch.long, device=iou_scores.device)
-                pred_indices = torch.tensor(pred_indices, dtype=torch.long, device=iou_scores.device)
-                
-                matched_iou_scores = iou_scores[gt_indices, pred_indices]
-                iou_loss = (1 - matched_iou_scores).mean()
-                n = 0
-                save_images(boxes, det_preds, new_w, new_h, n, images)
-                
-            total_val_loss += iou_loss.item()
-
-    avg_val_loss = total_val_loss / len(val_loader)
-    print(f"Epoch {epoch}: Validation Loss: {avg_val_loss}")
 
     # Update best validation loss and save model if necessary
     if avg_val_loss < best_val_loss:
         best_val_loss = avg_val_loss
         save_best_model(epoch, model)
 
-    return best_val_loss, epoch
-
-def process_batches(boxes_list, labels_list, detection_preds, device, new_w, new_h, epoch, n, images):
-    for boxes, labels, det_preds in zip(boxes_list, labels_list, detection_preds):
-        boxes, det_preds, labels = boxes.to(device), det_preds.to(device), labels.to(device)
-        save_images(boxes, det_preds, new_w, new_h, 0, images)
-        n += 1
-        yield boxes, labels, det_preds
-
-def save_images(boxes, det_preds, new_w, new_h, n, images):
-    img1 = images[n].mul(255).clamp(0, 255).permute(1, 2, 0).cpu().numpy().astype(np.uint8).copy()
-    draw_boxes(img1, boxes, (0, 255, 0), new_w, new_h)
-    draw_boxes(img1, det_preds, (255, 0, 0), new_w, new_h)
-    cv2.imwrite(f'/home/mstveras/images/img{n}.jpg', img1)
-
-def draw_boxes(image, boxes, color, new_w, new_h):
-    for box in boxes:
-        x_min, y_min, x_max, y_max = [int(box[i] * new_w if i % 2 == 0 else box[i] * new_h) for i in range(4)]
-        cv2.rectangle(image, (x_min, y_min), (x_max, y_max), color)
-
-def save_best_model(epoch, model):
-    #best_val_loss = avg_val_loss
-    best_model_file = f"best.pth"
-    torch.save(model.state_dict(), best_model_file)
-    #print(f"Model saved to {best_model_file} with Validation Loss: {avg_val_loss}")
+    print(f"Epoch {epoch}: Validation Loss: {avg_val_loss}")
 
 if __name__ == "__main__":
 
@@ -298,12 +111,12 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # Hyperparameters
-    num_epochs = 500
+    num_epochs = 25
     learning_rate = 0.0001
     batch_size = 1
     num_classes = 1
-    max_images = 800
-    num_boxes = 3
+    max_images = 100
+    num_boxes = 5
     best_val_loss = float('inf')
     new_w, new_h = 600, 300
 
@@ -317,10 +130,16 @@ if __name__ == "__main__":
     model = SimpleObjectDetector(num_boxes=num_boxes, num_classes=num_classes).to(device)
     model.det_head.apply(init_weights)
 
+    pretrained_weights = torch.load('best.pth', map_location=device)
+
+    # Update model's state_dict
+    model.load_state_dict(pretrained_weights, strict=False)
+
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
 
     for epoch in range(num_epochs):
         train_one_epoch_mse(epoch, train_loader, model, optimizer, device, new_w, new_h)
-        validate_one_epoch_mse(epoch, val_loader, model, device, new_w, new_h)
+        #validate_one_epoch_mse(epoch, val_loader, model, device, new_w, new_h)
 
+    torch.save(model.state_dict(), 'best_iou.pth')
     print('Training and validation completed.')

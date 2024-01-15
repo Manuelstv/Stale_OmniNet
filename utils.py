@@ -5,6 +5,7 @@ import random
 import cv2
 import xml.etree.ElementTree as ET
 import torchvision.transforms.functional as FT
+import numpy as np
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -725,3 +726,27 @@ def clip_gradient(optimizer, grad_clip):
         for param in group['params']:
             if param.grad is not None:
                 param.grad.data.clamp_(-grad_clip, grad_clip)
+
+def save_images(boxes, det_preds, new_w, new_h, n, images):
+    img1 = images[n].mul(255).clamp(0, 255).permute(1, 2, 0).cpu().numpy().astype(np.uint8).copy()
+    draw_boxes(img1, boxes, (0, 255, 0), new_w, new_h)
+    draw_boxes(img1, det_preds, (255, 0, 0), new_w, new_h)
+    cv2.imwrite(f'/home/mstveras/images/img{n}.jpg', img1)
+
+def draw_boxes(image, boxes, color, new_w, new_h):
+    for box in boxes:
+        x_min, y_min, x_max, y_max = [int(box[i] * new_w if i % 2 == 0 else box[i] * new_h) for i in range(4)]
+        cv2.rectangle(image, (x_min, y_min), (x_max, y_max), color)
+
+def save_best_model(epoch, model):
+    #best_val_loss = avg_val_loss
+    best_model_file = f"best.pth"
+    torch.save(model.state_dict(), best_model_file)
+    #print(f"Model saved to {best_model_file} with Validation Loss: {avg_val_loss}")
+
+def process_batches(boxes_list, labels_list, detection_preds, device, new_w, new_h, epoch, n, images):
+    for boxes, labels, det_preds in zip(boxes_list, labels_list, detection_preds):
+        boxes, det_preds, labels = boxes.to(device), det_preds.to(device), labels.to(device)
+        save_images(boxes, det_preds, new_w, new_h, 0, images)
+        n += 1
+        yield boxes, labels, det_preds

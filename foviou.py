@@ -4,7 +4,28 @@ from pdb import set_trace as pause
 import numpy as np
 from numpy import deg2rad
 
+def fov_iou_batch(gt_boxes, pred_boxes, new_w, new_h):
+    """
+    Calculate the Intersection over Union (IoU) for each pair of ground truth and predicted boxes.
 
+    Args:
+    - gt_boxes (Tensor): A tensor of ground truth bounding boxes.
+    - pred_boxes (Tensor): A tensor of predicted bounding boxes.
+
+    Returns:
+    - Tensor: A matrix of IoU values, where each element [i, j] is the IoU of the ith ground truth box and the jth predicted box.
+    """
+    # Initialize a tensor to store IoU values, on the same device as the input boxes
+    iou_values = []
+    for Bg in gt_boxes:
+        row = []
+        for Bd in pred_boxes:
+            row.append(iou(Bg, Bd, new_w, new_h))
+        iou_values.append(row)
+
+    # Convert list of lists to a tensor
+    ious = torch.tensor(iou_values, device=gt_boxes.device, dtype=torch.float32)
+    return ious.requires_grad_()
 
 def angle2radian(angle_sph_box, mode='convention'):
     """
@@ -42,7 +63,7 @@ def angle2radian(angle_sph_box, mode='convention'):
 
     return radian_sph_box
 
-def iou(box1, box2):
+def iou(box1, box2, new_w, new_h):
     """
     Calculate the Intersection over Union (IoU) of two bounding boxes.
 
@@ -50,8 +71,6 @@ def iou(box1, box2):
     box1, box2: tuples of (xmin, ymin, xmax, ymax)
     """
     # Unpack the coordinates
-
-    new_w, new_h = 600, 300
 
     xmin1, ymin1, xmax1, ymax1 = box1[0]*new_w, box1[1]*new_h, box1[2]*new_w, box1[3]*new_h
     xmin2, ymin2, xmax2, ymax2 = box2[0]*new_w, box2[1]*new_h, box2[2]*new_w, box2[3]*new_h

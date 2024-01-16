@@ -103,8 +103,8 @@ def iou(box1, box2, new_w, new_h):
 def fov_iou(Bg, Bd):
     import math
 
-    theta_g, phi_g, alpha_g, beta_g = Bg  # Unpacking ground truth bounding box values
-    theta_d, phi_d, alpha_d, beta_d = Bd  # Unpacking detected bounding box values
+    theta_g, phi_g, alpha_g, beta_g, _ = Bg  # Unpacking ground truth bounding box values
+    theta_d, phi_d, alpha_d, beta_d, _ = Bd  # Unpacking detected bounding box values
 
     # Step 1: Calculate FoV Area of Bg and Bd
     A_Bg = alpha_g * beta_g

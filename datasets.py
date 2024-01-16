@@ -129,9 +129,9 @@ class PascalVOCDataset(Dataset):
                 xmax = (float(bbox.find('width').text))/90
                 ymax = (float(int(bbox.find('height').text)))/90
 
-                boxes.append([xmin,ymin,xmax,ymax])
-                labels.append(label_mapping[obj.find('name').text])
                 confidences.append(1)
+                boxes.append([xmin,ymin,xmax,ymax, 1])
+                labels.append(label_mapping[obj.find('name').text])
 
         boxes = torch.FloatTensor(boxes)
         labels = torch.LongTensor(labels)

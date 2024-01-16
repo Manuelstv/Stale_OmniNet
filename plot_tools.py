@@ -27,7 +27,7 @@ class Plotting:
 def plot_bfov(image, v00, u00, a_lat, a_long, color, h, w):
     phi00 = (u00 - w / 2.) * ((2. * np.pi) / w)
     theta00 = -(v00 - h / 2.) * (np.pi / h)
-    r = 100
+    r = 10
     d_lat = r / (2 * np.tan(a_lat / 2))
     d_long = r / (2 * np.tan(a_long / 2))
     p = []
@@ -43,6 +43,7 @@ def plot_bfov(image, v00, u00, a_lat, a_long, color, h, w):
     return Plotting.plotEquirectangular(image, np.vstack((u, v)).T, color)
 
 def process_and_save_image(images, boxes, color, save_path):
+    images = images.mul(255).clamp(0, 255).permute(1, 2, 0).cpu().numpy().astype(np.uint8).copy()
     """
     Process an image from a list, plot bounding boxes, and save the image.
     
@@ -52,15 +53,15 @@ def process_and_save_image(images, boxes, color, save_path):
     - image_index: The index of the image in the images list to process.
     - file_path: The path to save the processed image.
     """
+
     for box in boxes:
         box = box
         u00, v00, a_lat1, a_long1 = (box[0]+1)*(600/2), (box[1]+1)*(300/2), 90*box[2], 90*box[3]
-        a_lat = np.radians(a_long1)
-        a_long = np.radians(a_lat1)
-        images = plot_bfov(images, v00, u00, a_lat, a_long, color, 300, 600)
+        a_long = np.radians(a_long1)
+        a_lat = np.radians(a_lat1)
+        images = plot_bfov(images, v00, u00, a_long, a_lat, color, 300, 600)
 
     cv2.imwrite(save_path, images)
-    return images
 
 
 def process_and_save_image_planar(images, boxes, color, save_path):

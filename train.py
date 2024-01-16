@@ -28,7 +28,7 @@ def init_weights(m):
     - If the layer has a bias term, it will be initialized to zero.
     """
     if isinstance(m, nn.Linear):
-        nn.init.uniform_(m.weight, -10, 10)
+        nn.init.uniform_(m.weight, -5, 5)
         if m.bias is not None:
             nn.init.constant_(m.bias, 0)
 
@@ -55,6 +55,7 @@ def train_one_epoch_mse(epoch, train_loader, model, optimizer, device, new_w, ne
 
     model.train()
     total_loss = 0.0
+    ploted = False
 
     for i, (images, boxes_list, labels_list, confidences_list) in enumerate(train_loader):
         images = images.to(device)
@@ -67,7 +68,11 @@ def train_one_epoch_mse(epoch, train_loader, model, optimizer, device, new_w, ne
             mse_loss = custom_loss_function(det_preds, boxes, new_w, new_h)
             batch_loss += mse_loss
         
-        save_images(boxes, det_preds, new_w, new_h, 0, images)
+            #save_images(boxes, det_preds, new_w, new_h, 0, images)
+            if ploted == False:
+                process_and_save_image(images[0], boxes.cpu(), color =(0,255,0), save_path = f'/home/mstveras/images2/gt_{epoch}.jpg')
+                process_and_save_image(images[0], det_preds.cpu().detach(), color =(0,255,0), save_path = f'/home/mstveras/images2/det_{epoch}.jpg')
+                ploted = True
 
         batch_loss.backward()
         optimizer.step()
@@ -111,11 +116,11 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # Hyperparameters
-    num_epochs = 25
+    num_epochs = 200
     learning_rate = 0.0001
     batch_size = 1
     num_classes = 1
-    max_images = 100
+    max_images = 30
     num_boxes = 5
     best_val_loss = float('inf')
     new_w, new_h = 600, 300
@@ -128,12 +133,13 @@ if __name__ == "__main__":
     #val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=True, collate_fn=train_dataset.collate_fn)
 
     model = SimpleObjectDetector(num_boxes=num_boxes, num_classes=num_classes).to(device)
+    
     model.det_head.apply(init_weights)
 
-    pretrained_weights = torch.load('best.pth', map_location=device)
+    #pretrained_weights = torch.load('best.pth', map_location=device)
 
     # Update model's state_dict
-    model.load_state_dict(pretrained_weights, strict=False)
+    #model.load_state_dict(pretrained_weights, strict=False)
 
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
 

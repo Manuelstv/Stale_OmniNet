@@ -7,6 +7,15 @@ from utils import transform
 import cv2
 import numpy as np
 
+
+def one_hot_encode(labels, num_classes):
+    # Create a tensor of shape [num_boxes, num_classes] filled with zeros
+    one_hot_labels = torch.zeros((labels.size(0), num_classes))
+    
+    # Use scatter_ to assign 1 to the corresponding class index
+    one_hot_labels.scatter_(1, labels.unsqueeze(1), 1)
+    return one_hot_labels
+
 class PascalVOCDataset(Dataset):
 
     def __init__(self, split, keep_difficult=False, max_images=10, new_w = 600, new_h = 300):
@@ -134,7 +143,7 @@ class PascalVOCDataset(Dataset):
                 labels.append(label_mapping[obj.find('name').text])
 
         boxes = torch.FloatTensor(boxes)
-        labels = torch.LongTensor(labels)
+        labels = one_hot_encode(torch.LongTensor(labels), num_classes=38)
         confidences = torch.FloatTensor(confidences).unsqueeze(1)  # Convert to tensor
         
         image, labels, difficulties = transform(image, labels, difficulties, split=self.split, new_w = self.new_w, new_h = self.new_h) 

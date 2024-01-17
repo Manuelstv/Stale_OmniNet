@@ -132,7 +132,7 @@ class SimpleObjectDetector(nn.Module):
         self.fc1 = nn.Linear(fc_1_features, fc_2_features)
         self.fc2 = nn.Linear(fc_2_features, 256)
         self.det_head = nn.Linear(256, num_boxes * 5)  # Detection head
-        #self.cls_head = nn.Linear(256, num_boxes * num_classes)  # Classification head
+        self.cls_head = nn.Linear(256, num_boxes * num_classes)  # Classification head
         #self.conf_head = nn.Linear(256, num_boxes)  # Confidence head
 
     def forward(self, x):
@@ -153,7 +153,7 @@ class SimpleObjectDetector(nn.Module):
         x = F.relu(self.fc2(x))
 
         detection_output = self.det_head(x).view(-1, self.num_boxes, 5)
-        #classification_output = self.cls_head(x).view(-1, self.num_boxes, self.num_classes)
+        classification_output = self.cls_head(x).view(-1, self.num_boxes, self.num_classes)
         #confidence_output = torch.sigmoid(self.conf_head(x)).view(-1, self.num_boxes, 1)
 
         # Apply the required transformations to the detection_output
@@ -161,5 +161,6 @@ class SimpleObjectDetector(nn.Module):
         detection_output[:, :, :2] = torch.tanh(detection_output[:, :, :2])
         # Scale the third and fourth columns to be in the range [0, 1]
         detection_output[:, :, 2:] = torch.sigmoid(detection_output[:, :, 2:])
+        classification_output = torch.sigmoid(classification_output)
 
-        return detection_output
+        return detection_output, classification_output

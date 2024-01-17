@@ -60,12 +60,12 @@ def train_one_epoch_mse(epoch, train_loader, model, optimizer, device, new_w, ne
     for i, (images, boxes_list, labels_list, confidences_list) in enumerate(train_loader):
         images = images.to(device)
         optimizer.zero_grad()
-        detection_preds = model(images)
+        detection_preds, classification_preds = model(images)
 
         batch_loss = torch.tensor(0.0, device=device)
 
-        for boxes, labels, det_preds in process_batches(boxes_list, labels_list, detection_preds, device, new_w, new_h, epoch, i, images):
-            mse_loss = custom_loss_function(det_preds, boxes, new_w, new_h)
+        for boxes, labels, det_preds, class_preds in process_batches(boxes_list, labels_list, detection_preds, classification_preds, device, new_w, new_h, epoch, i, images):
+            mse_loss = custom_loss_function(det_preds, class_preds, boxes,labels, new_w, new_h)
             batch_loss += mse_loss
         
             #save_images(boxes, det_preds, new_w, new_h, 0, images)
@@ -73,7 +73,7 @@ def train_one_epoch_mse(epoch, train_loader, model, optimizer, device, new_w, ne
                 process_and_save_image(images[0], 
                        gt_boxes=boxes.cpu(), 
                        det_preds=det_preds.cpu().detach(), 
-                       threshold=0.5, 
+                       threshold=0.7, 
                        color_gt=(0, 255, 0), 
                        color_pred=(255, 0, 0), 
                        save_path=f'/home/mstveras/images2/gt_pred_{epoch}.jpg')
@@ -94,12 +94,12 @@ def validate_one_epoch_mse(epoch, val_loader, model, device, new_w, new_h):
     with torch.no_grad():
         for i, (images, boxes_list, labels_list, confidences_list) in enumerate(val_loader):
             images = images.to(device)
-            detection_preds = model(images)
+            detection_preds, classification_preds = model(images)
 
             batch_val_loss = torch.tensor(0.0, device=device)
 
-            for boxes, labels, det_preds in process_batches(boxes_list, labels_list, detection_preds, device, new_w, new_h, epoch, i, images):
-                mse_loss = custom_loss_function(det_preds, boxes, new_w, new_h)
+            for boxes, labels, det_preds, c in process_batches(boxes_list, labels_list, detection_preds, device, new_w, new_h, epoch, i, images):
+                mse_loss = custom_loss_function(det_preds, class_preds, boxes, gt_labels, new_w, new_h)
                 batch_val_loss += mse_loss
 
             total_val_loss += batch_val_loss.item()
@@ -126,7 +126,7 @@ if __name__ == "__main__":
     batch_size = 1
     num_classes = 1
     max_images = 30
-    num_boxes = 5
+    num_boxes = 30
     best_val_loss = float('inf')
     new_w, new_h = 600, 300
 

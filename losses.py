@@ -47,6 +47,41 @@ def custom_loss_function(det_preds, boxes, new_w, new_h):
     return total_loss / len(matches) if matches else torch.tensor(0.0)
 
 
+def custom_loss_function(det_preds, classification_output, gt_boxes, gt_labels, new_w, new_h):
+    # Matches ground truth and predicted boxes using Hungarian matching or any other method
+    matches, _ = hungarian_matching(gt_boxes, det_preds, new_w, new_h)
+    
+    total_loss = 0.0
+    total_classification_loss = 0.0
+    for gt_idx, pred_idx in matches:
+        # Bounding box regression loss
+        gt_box = gt_boxes[gt_idx][:4]
+        pred_box = det_preds[pred_idx][:4]
+        bbox_loss = F.mse_loss(pred_box, gt_box)
+        
+        # Classification loss
+        gt_label_one_hot = gt_labels[gt_idx]  # One-hot encoded ground truth label
+        pred_class_probabilities = classification_output[pred_idx]
+        
+        # Use BCEWithLogitsLoss if classification_output is logits (before sigmoid)
+        # Use BCELoss if classification_output is probabilities (after sigmoid)
+        #class_loss = F.binary_cross_entropy_with_logits(pred_class_probabilities, gt_label_one_hot)
+        # or if you already applied sigmoid:
+        class_loss = F.binary_cross_entropy(pred_class_probabilities, gt_label_one_hot)
+        
+        # Combine the losses
+        total_loss += bbox_loss
+        total_classification_loss += class_loss
+
+    # Calculate mean loss
+    mean_bbox_loss = total_loss / len(matches) if matches else torch.tensor(0.0)
+    mean_class_loss = total_classification_loss / len(matches) if matches else torch.tensor(0.0)
+    
+    # You can also weigh these losses differently if needed
+    combined_loss = mean_bbox_loss + mean_class_loss
+    return combined_loss
+
+
 def giou_loss(pred_boxes_in, gt_boxes_in, new_w, new_h):
     # Ensure the boxes are (x_min, y_min, x_max, y_max)
     assert pred_boxes_in.shape == gt_boxes_in.shape

@@ -744,9 +744,9 @@ def save_best_model(epoch, model):
     torch.save(model.state_dict(), best_model_file)
     #print(f"Model saved to {best_model_file} with Validation Loss: {avg_val_loss}")
 
-def process_batches(boxes_list, labels_list, detection_preds, device, new_w, new_h, epoch, n, images):
-    for boxes, labels, det_preds in zip(boxes_list, labels_list, detection_preds):
-        boxes, det_preds, labels = boxes.to(device), det_preds.to(device), labels.to(device)
+def process_batches(boxes_list, labels_list, detection_preds, classification_preds, device, new_w, new_h, epoch, n, images):
+    for boxes, labels, det_preds, class_preds in zip(boxes_list, labels_list, detection_preds, classification_preds):
+        boxes, det_preds, class_preds, labels = boxes.to(device), det_preds.to(device), classification_preds.to(device), labels.to(device)
         save_images(boxes, det_preds, new_w, new_h, 0, images)
         n += 1
-        yield boxes, labels, det_preds
+        yield boxes, labels, det_preds, class_preds

@@ -1,6 +1,7 @@
 import numpy as np
 import cv2
 from numpy.linalg import norm
+import torch
 
 
 class Rotation:
@@ -42,25 +43,42 @@ def plot_bfov(image, v00, u00, a_lat, a_long, color, h, w):
     v = h - (-theta / np.pi + 1. / 2.) * h
     return Plotting.plotEquirectangular(image, np.vstack((u, v)).T, color)
 
-def process_and_save_image(images, boxes, color, save_path):
-    images = images.mul(255).clamp(0, 255).permute(1, 2, 0).cpu().numpy().astype(np.uint8).copy()
+def process_and_save_image(images, gt_boxes, det_preds, threshold, color_gt, color_pred, save_path):
     """
-    Process an image from a list, plot bounding boxes, and save the image.
+    Process an image, plot ground truth and predictions (above a confidence threshold), and save the image.
     
     Args:
-    - images: A list of images.
-    - boxes: A list of bounding boxes.
-    - image_index: The index of the image in the images list to process.
-    - file_path: The path to save the processed image.
+    - images: The image as a tensor.
+    - gt_boxes: Ground truth bounding boxes.
+    - det_preds: Detection predictions including bounding boxes and confidence scores.
+    - threshold: Confidence threshold to decide which predictions to plot.
+    - color_gt: Color for the ground truth boxes.
+    - color_pred: Color for the predicted boxes.
+    - save_path: Path to save the processed image.
     """
+    
+    # Process the image for visualization
+    images = images.mul(255).clamp(0, 255).permute(1, 2, 0).cpu().numpy().astype(np.uint8).copy()
 
-    for box in boxes:
-        box = box
+    # Plot ground truth boxes
+    for box in gt_boxes:
         u00, v00, a_lat1, a_long1 = (box[0]+1)*(600/2), (box[1]+1)*(300/2), 90*box[2], 90*box[3]
         a_long = np.radians(a_long1)
         a_lat = np.radians(a_lat1)
-        images = plot_bfov(images, v00, u00, a_long, a_lat, color, 300, 600)
+        images = plot_bfov(images, v00, u00, a_long, a_lat, color_gt, 300, 600)
 
+    # Plot predictions if their confidence is greater than the threshold
+    for pred in det_preds:
+        conf = torch.sigmoid(pred[4])
+        if conf > threshold:
+            print(conf)
+            box = pred[:4]
+            u00, v00, a_lat1, a_long1 = (box[0]+1)*(600/2), (box[1]+1)*(300/2), 90*box[2], 90*box[3]
+            a_long = np.radians(a_long1)
+            a_lat = np.radians(a_lat1)
+            images = plot_bfov(images, v00, u00, a_long, a_lat, color_pred, 300, 600)
+
+    # Save the image with plotted boxes
     cv2.imwrite(save_path, images)
 
 

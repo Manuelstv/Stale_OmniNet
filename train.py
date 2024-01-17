@@ -70,8 +70,13 @@ def train_one_epoch_mse(epoch, train_loader, model, optimizer, device, new_w, ne
         
             #save_images(boxes, det_preds, new_w, new_h, 0, images)
             if ploted == False:
-                process_and_save_image(images[0], boxes.cpu(), color =(0,255,0), save_path = f'/home/mstveras/images2/gt_{epoch}.jpg')
-                process_and_save_image(images[0], det_preds.cpu().detach(), color =(0,255,0), save_path = f'/home/mstveras/images2/det_{epoch}.jpg')
+                process_and_save_image(images[0], 
+                       gt_boxes=boxes.cpu(), 
+                       det_preds=det_preds.cpu().detach(), 
+                       threshold=0.5, 
+                       color_gt=(0, 255, 0), 
+                       color_pred=(255, 0, 0), 
+                       save_path=f'/home/mstveras/images2/gt_pred_{epoch}.jpg')
                 ploted = True
 
         batch_loss.backward()

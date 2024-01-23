@@ -34,17 +34,44 @@ def hungarian_matching(gt_boxes_in, pred_boxes_in, new_w, new_h):
 
     return matched_pairs, iou_matrix
 
-def custom_loss_function(det_preds, boxes, new_w, new_h):
+def custom_loss_function(det_preds, conf_preds, boxes, new_w, new_h):
+    iou_threshold = 0.5  # Define your IoU threshold
     matches, _ = hungarian_matching(boxes, det_preds, new_w, new_h)
+    
     total_loss = 0.0
+    total_confidence_loss = 0.0
+    total_localization_loss = 0.0
+
     for gt_idx, pred_idx in matches:
         gt_box = boxes[gt_idx]
         pred_box = det_preds[pred_idx]
-        # Compute the loss for this pair (e.g., MSE)
-        pair_loss = F.mse_loss(pred_box, gt_box)
-        #pair_loss = diou_loss(pred_box, gt_box, new_w = 600, new_h  =300)
-        total_loss += pair_loss
-    return total_loss / len(matches) if matches else torch.tensor(0.0)
+        pred_confidence = conf_preds[pred_idx]
+
+        # Ensure pred_confidence is a single value tensor
+        pred_confidence = pred_confidence.view(-1)  # Reshape to ensure it's a 1D tensor
+
+        # Compute the IoU for this pair
+        iou = fov_iou(pred_box, gt_box)
+
+        # Define target confidence based on IoU
+        target_confidence = torch.tensor([1 if iou > iou_threshold else 0], dtype=torch.float, device=pred_confidence.device)
+        
+        # Compute the confidence loss (BCE)
+        confidence_loss = F.binary_cross_entropy(pred_confidence, target_confidence)
+        total_confidence_loss += confidence_loss
+
+        # Compute the localization loss for this pair (1 - IoU or MSE)
+        localization_loss = 1 - iou  # or F.mse_loss(pred_box, gt_box)
+        total_localization_loss += localization_loss
+
+    # Calculate the mean losses
+    mean_confidence_loss = total_confidence_loss / len(matches) if matches else torch.tensor(0.0)
+    mean_localization_loss = total_localization_loss / len(matches) if matches else torch.tensor(0.0)
+
+    # Combine confidence loss and localization loss
+    total_loss = mean_confidence_loss + mean_localization_loss
+
+    return total_loss
 
 
 def giou_loss(pred_boxes_in, gt_boxes_in, new_w, new_h):

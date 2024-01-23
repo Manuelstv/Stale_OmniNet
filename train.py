@@ -15,6 +15,8 @@ from plot_tools import process_and_save_image, process_and_save_image_planar
 from sphiou import Sph
 from losses import *
 from utils import *
+from torch.optim.lr_scheduler import StepLR
+
 
 def init_weights(m):
     """
@@ -28,7 +30,7 @@ def init_weights(m):
     - If the layer has a bias term, it will be initialized to zero.
     """
     if isinstance(m, nn.Linear):
-        nn.init.uniform_(m.weight, -10, 10)
+        nn.init.uniform_(m.weight, -1, 1)
         if m.bias is not None:
             nn.init.constant_(m.bias, 0)
 
@@ -55,26 +57,40 @@ def train_one_epoch_mse(epoch, train_loader, model, optimizer, device, new_w, ne
 
     model.train()
     total_loss = 0.0
+    ploted = False
 
-    for i, (images, boxes_list, labels_list, confidences_list) in enumerate(train_loader):
+    for i, (images, boxes_list, labels_list) in enumerate(train_loader):
         images = images.to(device)
         optimizer.zero_grad()
-        detection_preds = model(images)
+        detection_preds, confidence_preds = model(images)
 
-        batch_loss = torch.tensor(0.0, device=device)
+        #target_confidences = torch.zeros_like(confidence_preds)
+        batch_loss = torch.tensor(0.0, device=device)        
 
-        for boxes, labels, det_preds in process_batches(boxes_list, labels_list, detection_preds, device, new_w, new_h, epoch, i, images):
-            mse_loss = custom_loss_function(det_preds, boxes, new_w, new_h)
+        for boxes, labels, det_preds, conf_preds, image in process_batches(boxes_list, labels_list, detection_preds, confidence_preds, device, new_w, new_h, epoch, i, images):
+            #import pdb; pdb.set_trace()
+            mse_loss = custom_loss_function(det_preds, conf_preds, boxes, new_w, new_h)
             batch_loss += mse_loss
         
-        save_images(boxes, det_preds, new_w, new_h, 0, images)
+            #save_images(boxes, det_preds, new_w, new_h, 0, images)
+            if ploted == False:
+                process_and_save_image(image, 
+                       gt_boxes=boxes.cpu(), 
+                       det_preds=det_preds.cpu().detach(), 
+                       threshold=0.5, 
+                       color_gt=(0, 255, 0), 
+                       color_pred=(255, 0, 0), 
+                       save_path=f'/home/mstveras/images2/gt_pred_{epoch}.jpg')
+                ploted = True
 
         batch_loss.backward()
         optimizer.step()
+        #scheduler.step()
         total_loss += batch_loss.item()
 
     avg_train_loss = total_loss / len(train_loader)
     print(f"Epoch {epoch}: Train Loss: {avg_train_loss}")
+
 
 
 def validate_one_epoch_mse(epoch, val_loader, model, device, new_w, new_h):
@@ -111,11 +127,11 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # Hyperparameters
-    num_epochs = 25
+    num_epochs = 1000
     learning_rate = 0.0001
-    batch_size = 1
+    batch_size = 8
     num_classes = 1
-    max_images = 100
+    max_images = 30
     num_boxes = 5
     best_val_loss = float('inf')
     new_w, new_h = 600, 300
@@ -130,12 +146,13 @@ if __name__ == "__main__":
     model = SimpleObjectDetector(num_boxes=num_boxes, num_classes=num_classes).to(device)
     model.det_head.apply(init_weights)
 
-    pretrained_weights = torch.load('best.pth', map_location=device)
+    #pretrained_weights = torch.load('best.pth', map_location=device)
 
     # Update model's state_dict
-    model.load_state_dict(pretrained_weights, strict=False)
+    #model.load_state_dict(pretrained_weights, strict=False)
 
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
+    #scheduler = StepLR(optimizer, step_size=30, gamma=0.1)
 
     for epoch in range(num_epochs):
         train_one_epoch_mse(epoch, train_loader, model, optimizer, device, new_w, new_h)

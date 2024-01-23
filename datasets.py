@@ -139,7 +139,7 @@ class PascalVOCDataset(Dataset):
         
         image, labels, difficulties = transform(image, labels, difficulties, split=self.split, new_w = self.new_w, new_h = self.new_h) 
 
-        return image, boxes, labels, confidences
+        return image, boxes, labels
 
     def __len__(self):
         return len(self.image_filenames)
@@ -159,8 +159,8 @@ class PascalVOCDataset(Dataset):
         images = [item[0] for item in batch]
         boxes = [item[1] for item in batch]
         labels = [item[2] for item in batch]
-        confidences = [item[3] for item in batch]
+        #confidences = [item[3] for item in batch]
 
         images = torch.stack(images, dim=0)
 
-        return images, boxes, labels, confidences  # tensor (N, 3, 300, 300), 3 lists of N tensors each
+        return images, boxes, labels  # tensor (N, 3, 300, 300), 3 lists of N tensors each

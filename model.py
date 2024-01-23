@@ -6,44 +6,49 @@ import numpy as np
 
 
 class SimpleObjectDetectorResnet(nn.Module):
-    def __init__(self, num_boxes=50, num_classes=38, pretrained=True):
+    def __init__(self, num_boxes=50, num_classes=38, pretrained=False):
         super(SimpleObjectDetectorResnet, self).__init__()
         self.num_boxes = num_boxes
         self.num_classes = num_classes
 
         # Load a pretrained ResNet-50 model
-        resnet = models.resnet50(pretrained=pretrained)
+        resnet = models.resnet18(pretrained=pretrained)
         self.backbone = nn.Sequential(*list(resnet.children())[:-2])
 
         # Adjust for the output size of ResNet-50
-        fc_1_features = 2048 * 7 * 7  # Example size, adjust as needed
+        fc_1_features = 512 * 10 * 19  # Example size, adjust as needed
+        fc_2_features = 512
 
         # Fully connected layers
-        self.fc1 = nn.Linear(fc_1_features, 256)
-        self.det_head = nn.Linear(256, num_boxes * 5)  # Detection head
+        self.fc1 = nn.Linear(fc_1_features, fc_2_features)
+        self.fc2 = nn.Linear(fc_2_features, 256)
+        self.det_head = nn.Linear(256, num_boxes * 4)  # Detection head
         self.cls_head = nn.Linear(256, num_boxes * num_classes)  # Classification head
         self.conf_head = nn.Linear(256, num_boxes)  # Confidence head
 
     def forward(self, x):
         x = self.backbone(x)
+        #print(x.size())
         x = x.view(x.size(0), -1)
         x = F.relu(self.fc1(x))
+        x = F.relu(self.fc2(x))
 
 
         #could be optimized
-        detection_raw = self.det_head(x).view(-1, self.num_boxes, 5)
+        #detection_raw = self.det_head(x).view(-1, self.num_boxes, 4)
+
+        detection = self.det_head(x).view(-1, self.num_boxes, 4)
 
         # Apply sigmoid to the width, height, and class_confidence
-        detection[:, :, 2:] = torch.sigmoid(detection_raw[:, :, 2:])
+        detection[:, :, 0:4] = torch.sigmoid(detection[:, :, 0:4])
 
         # Apply tanh to the center_x and center_y and rescale to (-1, 1)
-        detection[:, :, 0:2] = torch.tanh(detection_raw[:, :, 0:2])
-
-        detection = detection.view(-1, self.num_boxes, 4)
+        #detection[:, :, 0:2] = torch.tanh(detection[:, :, 0:2])
         
-        classification = self.cls_head(x).view(-1, self.num_boxes, self.num_classes)
-        confidence = torch.sigmoid(self.conf_head(x)).view(-1, self.num_boxes, 1)
-        return detection, classification, confidence
+        #classification = self.cls_head(x).view(-1, self.num_boxes, self.num_classes)
+        #confidence = torch.sigmoid(self.conf_head(x)).view(-1, self.num_boxes, 1)
+        #detection_output[:, :, 0:4] = torch.sigmoid(detection_output[:, :, 0:4])
+        return detection
 
 class SimpleObjectDetectorMobile(nn.Module):
     def __init__(self, num_boxes=50, num_classes=38, pretrained=True):
@@ -82,6 +87,7 @@ class SimpleObjectDetectorMobile(nn.Module):
         #detection_output[:, :, :2] = torch.tanh(detection_output[:, :, :2])
         # Scale the third and fourth columns to be in the range [0, 1]
         detection_output[:, :, 0:4] = torch.sigmoid(detection_output[:, :, 0:4])
+        detection_output[:, :, 0:4] = torch.sigmoid(detection_output[:, :, 0:4])
         # Set the last column to be 0
         #detection_output[:, :, 4] = 0.0
 
@@ -111,16 +117,14 @@ class SimpleObjectDetector(nn.Module):
         #self.bn6 = nn.BatchNorm2d(256)
         self.conv7 = nn.Conv2d(256, 512, kernel_size=3, stride=1, padding=1)
         #self.bn7 = nn.BatchNorm2d(512)
-
-
         # Pooling layer
         self.pool = nn.MaxPool2d(2, 2)
 
         # Calculate the flattened size after convolution and pooling layers
         # Assuming the input image size is 1920x960
         # The size after conv and pool layers would still be [32, 120, 60]
-        fc_1_features = 512*2
-        fc_2_features = 256*2
+        fc_1_features = 18432
+        fc_2_features = 9000
 
         #self.dropout1 = nn.Dropout(0.2)
         #self.dropout2 = nn.Dropout(0.2)
@@ -130,33 +134,32 @@ class SimpleObjectDetector(nn.Module):
         self.fc2 = nn.Linear(fc_2_features, 256)
         self.det_head = nn.Linear(256, num_boxes * 4)  # Detection head
         #self.cls_head = nn.Linear(256, num_boxes * num_classes)  # Classification head
-        #self.conf_head = nn.Linear(256, num_boxes)  # Confidence head
+        self.conf_head = nn.Linear(256, num_boxes)  # Confidence head
 
     def forward(self, x):
         x = F.relu(self.conv1(x))
         x = F.relu(self.conv2(x))
-        x = self.pool(F.relu(self.conv3(x)))
-        x = self.pool(F.relu(self.conv4(x)))
+        x = (F.relu(self.conv3(x)))
+        x = (F.relu(self.conv4(x)))
         x = self.pool(F.relu(self.conv5(x)))
         x = self.pool(F.relu(self.conv6(x)))
         x = self.pool(F.relu(self.conv7(x)))
-        #x = self.pool(x)
 
         # Flatten the features for the fully connected layer
         #rint(x.size())
         x = x.view(x.size(0), -1)
-
+        #print(x.size())
         x = F.relu(self.fc1(x))
         x = F.relu(self.fc2(x))
 
         detection_output = self.det_head(x).view(-1, self.num_boxes, 4)
         #classification_output = self.cls_head(x).view(-1, self.num_boxes, self.num_classes)
-        #confidence_output = torch.sigmoid(self.conf_head(x)).view(-1, self.num_boxes, 1)
+        confidence_output = torch.sigmoid(self.conf_head(x)).view(-1, self.num_boxes, 1)
 
         # Apply the required transformations to the detection_output
         # Scale the first two columns to be in the range [-1, 1]
-        #detection_output[:, :, :2] = torch.tanh(detection_output[:, :, :2])
+        detection_output[:, :, :2] = torch.tanh(detection_output[:, :, :2])
         # Scale the third and fourth columns to be in the range [0, 1]
-        detection_output[:, :, 0:4] = torch.sigmoid(detection_output[:, :, 0:4])
+        detection_output[:, :, 2:] = torch.sigmoid(detection_output[:, :, 2:])
 
-        return detection_output
+        return detection_output, confidence_output

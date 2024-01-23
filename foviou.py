@@ -135,10 +135,44 @@ def fov_iou(Bg, Bd):
     # Step 5: Calculate the FoV-IoU
     FoV_IoU = A_I / A_U if A_U != 0 else 0
 
-    if FoV_IoU>1:
-        print(Bg, Bd)
-
     return FoV_IoU
+
+def fov_iou_loss(Bg, Bd):
+    import math
+
+    theta_g, phi_g, alpha_g, beta_g = Bg  # Unpacking ground truth bounding box values
+    theta_d, phi_d, alpha_d, beta_d = Bd  # Unpacking detected bounding box values
+
+    # Step 1: Calculate FoV Area of Bg and Bd
+    A_Bg = alpha_g * beta_g
+    A_Bd = alpha_d * beta_d
+
+    # Step 2: Calculate FoV distance between Bg and Bd
+    delta_fov = (theta_d - theta_g) * math.cos((phi_g + phi_d) / 2)
+
+    # Step 3: Construct an approximate FoV Intersection
+    theta_I_min = max(-alpha_g / 2, delta_fov - alpha_d / 2)
+    theta_I_max = min(alpha_g / 2, delta_fov + alpha_d / 2)
+    phi_I_min = max(phi_g - beta_g / 2, phi_d - beta_d / 2)
+    phi_I_max = min(phi_g + beta_g / 2, phi_d + beta_d / 2)
+
+    # Step 4: Calculate the Area of the FoV Intersection and Union
+    if theta_I_max > theta_I_min and phi_I_max > phi_I_min:
+        # Compute area of FoV intersection I
+        A_I = (theta_I_max - theta_I_min) * (phi_I_max - phi_I_min)
+    else:
+        # No valid intersection
+        A_I = 0
+
+    A_U = A_Bg + A_Bd - A_I
+
+    # Ensure that A_I and A_U are not negative
+    #A_U = max(A_U, 0)
+
+    # Step 5: Calculate the FoV-IoU
+    FoV_IoU = A_I / A_U if A_U != 0 else 0
+
+    return 1-FoV_IoU
 
 def fov_giou_loss(Bg, Bd):
     # Bg and Bd are the ground truth and detected bounding boxes
@@ -151,8 +185,17 @@ def fov_giou_loss(Bg, Bd):
     theta_max = torch.min(Bg[2]/2, alpha_d/2 + delta_fov)
     phi_min = torch.max(-Bg[3]/2, -Bd[3]/2 - delta_fov)
     phi_max = torch.min(Bg[3]/2, Bd[3]/2 + delta_fov)
-    A_I = (theta_max - theta_min) * (phi_max - phi_min)
+
+    if theta_max > theta_min and phi_max > phi_min:
+        # Compute area of FoV intersection I
+        A_I = (theta_max - theta_min) * (phi_max - phi_min)
+    else:
+        # No valid intersection
+        A_I = 0
+
     A_U = Bg[2] * Bg[3] + Bd[2] * Bd[3] - A_I
+
+    FoV_IoU = A_I / A_U if A_U != 0 else 0
     
     # Step 2: Build an approximate smallest enclosing box C
     theta_c_min = torch.min(-Bg[2]/2, -Bd[2]/2 - delta_fov)
@@ -164,7 +207,7 @@ def fov_giou_loss(Bg, Bd):
     A_C = (theta_c_max - theta_c_min) * (phi_c_max - phi_c_min)
     
     # Step 4: Compute FoV-GIoU loss
-    FoV_GIoU = 1 - (A_I / A_U) + (A_C - A_U) / A_C
+    FoV_GIoU = 1 - (FoV_IoU) + (A_C - A_U) / A_C
     
     return FoV_GIoU
 

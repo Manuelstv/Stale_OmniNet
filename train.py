@@ -34,7 +34,7 @@ def init_weights(m):
         if m.bias is not None:
             nn.init.constant_(m.bias, 0)
 
-def train_one_epoch_mse(epoch, train_loader, model, optimizer, device, new_w, new_h):
+def train_one_epoch_mse(epoch, train_loader, model, optimizer, device, new_w, new_h, num_classes):
     """
     Train the model for one epoch using Mean Squared Error (MSE) as the loss function.
 
@@ -62,16 +62,14 @@ def train_one_epoch_mse(epoch, train_loader, model, optimizer, device, new_w, ne
     for i, (images, boxes_list, labels_list) in enumerate(train_loader):
         images = images.to(device)
         optimizer.zero_grad()
-        detection_preds, confidence_preds = model(images)
+        #pdb.set_trace()
+        detection_preds, confidence_preds, classification_preds = model(images)
 
-        #target_confidences = torch.zeros_like(confidence_preds)
         batch_loss = torch.tensor(0.0, device=device)        
 
-        for boxes, labels, det_preds, conf_preds, image in process_batches(boxes_list, labels_list, detection_preds, confidence_preds, device, new_w, new_h, epoch, i, images):
-            mse_loss, matches = custom_loss_function(det_preds, conf_preds, boxes, new_w, new_h)
+        for boxes, labels, det_preds, conf_preds, class_preds, image in process_batches(boxes_list, labels_list, detection_preds, confidence_preds, classification_preds, device, new_w, new_h, epoch, i, images):
+            mse_loss, matches = custom_loss_function(det_preds, conf_preds, boxes, labels, class_preds, new_w, new_h)
             batch_loss += mse_loss
-            #import pdb;pdb.set_trace()
-            #save_images(boxes, det_preds, new_w, new_h, 0, images)
             if ploted == False:
                 process_and_save_image2(image,
                                        matches, 
@@ -91,34 +89,6 @@ def train_one_epoch_mse(epoch, train_loader, model, optimizer, device, new_w, ne
     avg_train_loss = total_loss / len(train_loader)
     print(f"Epoch {epoch}: Train Loss: {avg_train_loss}")
 
-
-
-def validate_one_epoch_mse(epoch, val_loader, model, device, new_w, new_h):
-    model.eval()
-    total_val_loss = 0.0
-
-    with torch.no_grad():
-        for i, (images, boxes_list, labels_list, confidences_list) in enumerate(val_loader):
-            images = images.to(device)
-            detection_preds = model(images)
-
-            batch_val_loss = torch.tensor(0.0, device=device)
-
-            for boxes, labels, det_preds in process_batches(boxes_list, labels_list, detection_preds, device, new_w, new_h, epoch, i, images):
-                mse_loss = custom_loss_function(det_preds, boxes, new_w, new_h)
-                batch_val_loss += mse_loss
-
-            total_val_loss += batch_val_loss.item()
-
-    avg_val_loss = total_val_loss / len(val_loader)
-
-    # Update best validation loss and save model if necessary
-    if avg_val_loss < best_val_loss:
-        best_val_loss = avg_val_loss
-        save_best_model(epoch, model)
-
-    print(f"Epoch {epoch}: Validation Loss: {avg_val_loss}")
-
 if __name__ == "__main__":
 
     torch.cuda.empty_cache()
@@ -130,7 +100,7 @@ if __name__ == "__main__":
     num_epochs = 1000
     learning_rate = 0.0001
     batch_size = 8
-    num_classes = 1
+    num_classes = 38
     max_images = 30
     num_boxes = 10
     best_val_loss = float('inf')
@@ -155,7 +125,7 @@ if __name__ == "__main__":
     #scheduler = StepLR(optimizer, step_size=30, gamma=0.1)
 
     for epoch in range(num_epochs):
-        train_one_epoch_mse(epoch, train_loader, model, optimizer, device, new_w, new_h)
+        train_one_epoch_mse(epoch, train_loader, model, optimizer, device, new_w, new_h, num_classes)
         #validate_one_epoch_mse(epoch, val_loader, model, device, new_w, new_h)
 
     torch.save(model.state_dict(), 'best_iou.pth')

@@ -76,7 +76,7 @@ def process_and_save_image2(images, matches, gt_boxes, confidences, det_preds, t
         a_lat = np.radians(a_lat1)
             
         # Annotate the image with the confidence score
-        label = f'{conf:.2f}'  # Format the confidence to 2 decimal places
+        conf_label = f'{conf:.2f}'  # Format the confidence to 2 decimal places
         # Position for the text, you might need to adjust depending on the image
         label_position = (int(u00), int(v00) - 10)
         
@@ -86,7 +86,7 @@ def process_and_save_image2(images, matches, gt_boxes, confidences, det_preds, t
             color_pred = (0,0,255)
         
         images = plot_bfov(images, v00, u00, a_long, a_lat, color_pred, 300, 600)
-        cv2.putText(images, label, label_position, cv2.FONT_HERSHEY_SIMPLEX, 0.5, color_pred, 2)
+        cv2.putText(images, conf_label, label_position, cv2.FONT_HERSHEY_SIMPLEX, 0.5, color_pred, 2)
 
     # Save the image with plotted boxes
     cv2.imwrite(save_path, images)

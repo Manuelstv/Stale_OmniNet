@@ -36,13 +36,15 @@ def hungarian_matching(gt_boxes_in, pred_boxes_in, new_w, new_h):
     return matched_pairs, iou_matrix
 
 
-def custom_loss_function(det_preds, conf_preds, boxes, new_w, new_h):
+def custom_loss_function(det_preds, conf_preds, boxes, labels, class_preds, new_w, new_h):
+    #alta sensibilidade a esse param
     iou_threshold = 0.2  # Define your IoU threshold
     matches, _ = hungarian_matching(boxes, det_preds, new_w, new_h)
 
     total_loss = 0.0
     total_confidence_loss = 0.0
     total_localization_loss = 0.0
+    total_classification_loss = 0.0
     unmatched_loss = 0.0  # Initialize the unmatched loss
 
     matched_dets = set(pred_idx for _, pred_idx in matches)
@@ -53,6 +55,10 @@ def custom_loss_function(det_preds, conf_preds, boxes, new_w, new_h):
         gt_box = boxes[gt_idx]
         pred_box = det_preds[pred_idx]
         pred_confidence = conf_preds[pred_idx]
+        class_label = labels[gt_idx]
+        pred_class = class_preds[pred_idx]
+
+        #pdb.set_trace()
 
         pred_confidence = pred_confidence.view(-1)  # Reshape to ensure it's a 1D tensor
 
@@ -61,6 +67,17 @@ def custom_loss_function(det_preds, conf_preds, boxes, new_w, new_h):
         
         confidence_loss = F.binary_cross_entropy(pred_confidence, target_confidence)
         total_confidence_loss += confidence_loss
+
+        #pdb.set_trace()
+
+        class_criterion = torch.nn.CrossEntropyLoss()
+
+        class_label = class_label.unsqueeze(0)  # Reshape to [1]
+        pred_class = pred_class.unsqueeze(0) 
+
+        classification_loss =  class_criterion(pred_class, class_label)
+
+        total_classification_loss += classification_loss
 
         localization_loss = 1 - iou  # or another loss like F.mse_loss(pred_box, gt_box)
         total_localization_loss += localization_loss
@@ -72,7 +89,7 @@ def custom_loss_function(det_preds, conf_preds, boxes, new_w, new_h):
         unmatched_confidence = unmatched_confidence.view(-1)  # Reshape to ensure it's a 1D tensor
         unmatched_loss += F.binary_cross_entropy(unmatched_confidence, torch.tensor([0.0], dtype=torch.float, device=unmatched_confidence.device))
 
-    total_loss = (total_confidence_loss + total_localization_loss + unmatched_penalty * unmatched_loss) / (len(matches) + len(unmatched_dets)) if matches else unmatched_penalty * unmatched_loss
+    total_loss = (total_confidence_loss + total_localization_loss+total_classification_loss+unmatched_penalty * unmatched_loss) / (len(matches) + len(unmatched_dets)) if matches else unmatched_penalty * unmatched_loss
 
     return total_loss, matches
 

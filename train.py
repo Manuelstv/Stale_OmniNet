@@ -11,7 +11,7 @@ from datasets import PascalVOCDataset
 from foviou import *
 from model import (SimpleObjectDetector, SimpleObjectDetectorMobile,
                    SimpleObjectDetectorResnet)
-from plot_tools import process_and_save_image, process_and_save_image_planar
+from plot_tools import process_and_save_image, process_and_save_image2, process_and_save_image_planar
 from sphiou import Sph
 from losses import *
 from utils import *
@@ -68,19 +68,19 @@ def train_one_epoch_mse(epoch, train_loader, model, optimizer, device, new_w, ne
         batch_loss = torch.tensor(0.0, device=device)        
 
         for boxes, labels, det_preds, conf_preds, image in process_batches(boxes_list, labels_list, detection_preds, confidence_preds, device, new_w, new_h, epoch, i, images):
-            #import pdb; pdb.set_trace()
-            mse_loss = custom_loss_function(det_preds, conf_preds, boxes, new_w, new_h)
+            mse_loss, matches = custom_loss_function(det_preds, conf_preds, boxes, new_w, new_h)
             batch_loss += mse_loss
-        
+            #import pdb;pdb.set_trace()
             #save_images(boxes, det_preds, new_w, new_h, 0, images)
             if ploted == False:
-                process_and_save_image(image, 
-                       gt_boxes=boxes.cpu(), 
+                process_and_save_image2(image,
+                                       matches, 
+                       gt_boxes=boxes.cpu(),
+                       confidences = conf_preds.cpu(), 
                        det_preds=det_preds.cpu().detach(), 
                        threshold=0.5, 
                        color_gt=(0, 255, 0), 
-                       color_pred=(255, 0, 0), 
-                       save_path=f'/home/mstveras/images2/gt_pred_{epoch}.jpg')
+                       save_path=f'/home/mstveras/images5/gt_pred_{epoch}.jpg')
                 ploted = True
 
         batch_loss.backward()
@@ -132,7 +132,7 @@ if __name__ == "__main__":
     batch_size = 8
     num_classes = 1
     max_images = 30
-    num_boxes = 5
+    num_boxes = 10
     best_val_loss = float('inf')
     new_w, new_h = 600, 300
 
